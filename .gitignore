@@ -1,0 +1,10 @@
+.github/
+CLAUDE.md
+.cursor/
+.claude/
+.agent/
+.mcp.*
+*-lock.json
+node_modules/
+.github/instructions/session-memory.instructions.md
+.cursor/rules
