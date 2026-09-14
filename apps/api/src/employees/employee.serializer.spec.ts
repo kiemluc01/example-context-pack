@@ -1,5 +1,5 @@
 import { EmployeeStatus, Gender, Prisma, Role, User } from '@prisma/client';
-import { EmployeeWithUser, parseDate, toDateString, toDetail, toListItem } from './employee.serializer';
+import { EmployeeWithRelations, parseDate, toDateString, toDetail, toListItem } from './employee.serializer';
 
 function account(overrides: Partial<User> = {}): User {
   return {
@@ -15,7 +15,7 @@ function account(overrides: Partial<User> = {}): User {
   };
 }
 
-function employee(overrides: Partial<EmployeeWithUser> = {}): EmployeeWithUser {
+function employee(overrides: Partial<EmployeeWithRelations> = {}): EmployeeWithRelations {
   return {
     id: 'e1',
     code: 'NV0001',
@@ -24,7 +24,17 @@ function employee(overrides: Partial<EmployeeWithUser> = {}): EmployeeWithUser {
     phone: '0912345678',
     dateOfBirth: new Date('1990-05-20T00:00:00.000Z'),
     gender: Gender.MALE,
-    department: 'Kỹ thuật',
+    departmentId: 'd1',
+    department: {
+      id: 'd1',
+      code: 'KT',
+      name: 'Kỹ thuật',
+      parentId: 'd0',
+      managerId: 'e9',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      deletedAt: null,
+    },
     position: 'Lập trình viên',
     hireDate: new Date('2024-01-15T00:00:00.000Z'),
     status: EmployeeStatus.ACTIVE,
@@ -51,7 +61,7 @@ describe('date helpers', () => {
 });
 
 describe('toListItem', () => {
-  it('omits salary and national ID and summarises avatar and account', () => {
+  it('omits salary and national ID, summarises avatar and account and exposes only the department reference', () => {
     const item = toListItem(
       employee({ avatarPath: 'a.png', user: account(), deletedAt: new Date('2025-03-01T10:00:00.000Z') }),
     );
@@ -62,7 +72,7 @@ describe('toListItem', () => {
       fullName: 'Nguyễn Văn An',
       email: 'an@congty.vn',
       phone: '0912345678',
-      department: 'Kỹ thuật',
+      department: { id: 'd1', code: 'KT', name: 'Kỹ thuật' },
       position: 'Lập trình viên',
       status: 'ACTIVE',
       hireDate: '2024-01-15',
@@ -82,6 +92,7 @@ describe('toListItem', () => {
 describe('toDetail', () => {
   it('adds private fields and account state', () => {
     expect(toDetail(employee({ user: account() }))).toMatchObject({
+      department: { id: 'd1', code: 'KT', name: 'Kỹ thuật' },
       dateOfBirth: '1990-05-20',
       gender: 'MALE',
       salary: 15000000,

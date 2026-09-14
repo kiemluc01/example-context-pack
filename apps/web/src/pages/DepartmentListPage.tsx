@@ -1,44 +1,41 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { STATUS_LABEL, formatDate, ROLE_LABEL } from '../labels';
-import type { DepartmentRef, EmployeeListItem, EmployeeStatus, ListParams, Page, SortField } from '../types';
+import { useAuth } from '../auth';
+import type { Department, DepartmentListParams, DepartmentRef, DepartmentSortField, Page } from '../types';
 
-const COLUMNS: Array<{ key: SortField | null; label: string }> = [
-  { key: 'code', label: 'Mã NV' },
-  { key: 'fullName', label: 'Họ tên' },
-  { key: null, label: 'Số điện thoại' },
-  { key: 'department', label: 'Phòng ban' },
-  { key: 'position', label: 'Chức vụ' },
-  { key: 'hireDate', label: 'Ngày vào làm' },
-  { key: null, label: 'Trạng thái' },
-  { key: null, label: 'Tài khoản' },
+const COLUMNS: Array<{ key: DepartmentSortField | null; label: string }> = [
+  { key: 'code', label: 'Mã phòng ban' },
+  { key: 'name', label: 'Tên phòng ban' },
+  { key: null, label: 'Phòng ban cha' },
+  { key: null, label: 'Trưởng phòng' },
+  { key: null, label: 'Nhân viên đang làm' },
 ];
 
-function readParams(search: URLSearchParams): ListParams {
+function readParams(search: URLSearchParams): DepartmentListParams {
   return {
     q: search.get('q') ?? undefined,
-    departmentId: search.get('departmentId') ?? undefined,
-    position: search.get('position') ?? undefined,
-    status: (search.get('status') as EmployeeStatus | null) ?? undefined,
-    sortBy: (search.get('sortBy') as SortField | null) ?? 'createdAt',
-    sortOrder: search.get('sortOrder') === 'asc' ? 'asc' : 'desc',
+    parentId: search.get('parentId') ?? undefined,
+    status: search.get('status') === 'DELETED' ? 'DELETED' : undefined,
+    sortBy: (search.get('sortBy') as DepartmentSortField | null) ?? 'name',
+    sortOrder: search.get('sortOrder') === 'desc' ? 'desc' : 'asc',
     page: Math.max(1, Number(search.get('page')) || 1),
   };
 }
 
-export function EmployeeListPage() {
+export function DepartmentListPage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useSearchParams();
   const params = readParams(search);
   const [keyword, setKeyword] = useState(params.q ?? '');
-  const [data, setData] = useState<Page<EmployeeListItem> | null>(null);
-  const [options, setOptions] = useState<{ departments: DepartmentRef[]; positions: string[] }>({ departments: [], positions: [] });
+  const [data, setData] = useState<Page<Department> | null>(null);
+  const [parents, setParents] = useState<DepartmentRef[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   /** Updates URL params; any filter change returns to page 1. */
-  const update = (changes: Partial<Record<keyof ListParams, string | undefined>>, resetPage = true) => {
+  const update = (changes: Partial<Record<keyof DepartmentListParams, string | undefined>>, resetPage = true) => {
     const next = new URLSearchParams(search);
     for (const [key, value] of Object.entries(changes)) {
       if (value) next.set(key, value);
@@ -49,7 +46,7 @@ export function EmployeeListPage() {
   };
 
   useEffect(() => {
-    api.filterOptions().then(setOptions).catch(() => undefined);
+    api.departmentOptions().then(setParents).catch(() => undefined);
   }, []);
 
   // Debounce typing into the search box.
@@ -66,7 +63,7 @@ export function EmployeeListPage() {
     setLoading(true);
     setError('');
     api
-      .listEmployees(readParams(new URLSearchParams(queryKey)))
+      .listDepartments(readParams(new URLSearchParams(queryKey)))
       .then((page) => !ignore && setData(page))
       .catch((err: Error) => !ignore && setError(err.message))
       .finally(() => !ignore && setLoading(false));
@@ -75,7 +72,7 @@ export function EmployeeListPage() {
     };
   }, [queryKey]);
 
-  const toggleSort = (key: SortField) => {
+  const toggleSort = (key: DepartmentSortField) => {
     const order = params.sortBy === key && params.sortOrder === 'asc' ? 'desc' : 'asc';
     update({ sortBy: key, sortOrder: order }, false);
   };
@@ -86,40 +83,33 @@ export function EmployeeListPage() {
   return (
     <div className="stack">
       <div className="page-head">
-        <h1>Nhân viên</h1>
-        <Link to="/employees/new" className="btn btn-primary">
-          + Thêm nhân viên
-        </Link>
+        <h1>Phòng ban</h1>
+        {user?.role === 'ADMIN' && (
+          <Link to="/departments/new" className="btn btn-primary">
+            + Thêm phòng ban
+          </Link>
+        )}
       </div>
 
       <div className="card filters">
         <input
           type="search"
-          placeholder="Tìm theo mã, họ tên, email, số điện thoại…"
+          placeholder="Tìm theo mã, tên phòng ban…"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           aria-label="Tìm kiếm"
         />
-        <select value={params.departmentId ?? ''} onChange={(e) => update({ departmentId: e.target.value || undefined })} aria-label="Phòng ban">
-          <option value="">Tất cả phòng ban</option>
-          {options.departments.map((d) => (
+        <select value={params.parentId ?? ''} onChange={(e) => update({ parentId: e.target.value || undefined })} aria-label="Phòng ban cha">
+          <option value="">Mọi phòng ban cha</option>
+          {parents.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}
             </option>
           ))}
         </select>
-        <select value={params.position ?? ''} onChange={(e) => update({ position: e.target.value || undefined })} aria-label="Chức vụ">
-          <option value="">Tất cả chức vụ</option>
-          {options.positions.map((p) => (
-            <option key={p}>{p}</option>
-          ))}
-        </select>
         <select value={params.status ?? ''} onChange={(e) => update({ status: e.target.value || undefined })} aria-label="Trạng thái">
-          <option value="">Đang làm (mọi trạng thái)</option>
-          <option value="ACTIVE">{STATUS_LABEL.ACTIVE}</option>
-          <option value="PROBATION">{STATUS_LABEL.PROBATION}</option>
-          <option value="ON_LEAVE">{STATUS_LABEL.ON_LEAVE}</option>
-          <option value="RESIGNED">Đã nghỉ việc (đã xóa)</option>
+          <option value="">Đang hoạt động</option>
+          <option value="DELETED">Đã xóa</option>
         </select>
       </div>
 
@@ -144,29 +134,23 @@ export function EmployeeListPage() {
             </tr>
           </thead>
           <tbody>
-            {data?.items.map((e) => (
-              <tr key={e.id} className="clickable" onClick={() => navigate(`/employees/${e.id}`)}>
-                <td className="mono">{e.code}</td>
+            {data?.items.map((d) => (
+              <tr key={d.id} className="clickable" onClick={() => navigate(`/departments/${d.id}`)}>
+                <td className="mono">{d.code}</td>
                 <td>
-                  <Link to={`/employees/${e.id}`} onClick={(ev) => ev.stopPropagation()}>
-                    {e.fullName}
+                  <Link to={`/departments/${d.id}`} onClick={(ev) => ev.stopPropagation()}>
+                    {d.name}
                   </Link>
-                  <div className="muted small">{e.email}</div>
                 </td>
-                <td>{e.phone ?? '—'}</td>
-                <td>{e.department.name}</td>
-                <td>{e.position}</td>
-                <td>{formatDate(e.hireDate)}</td>
-                <td>
-                  <span className={`badge status-${e.status.toLowerCase()}`}>{STATUS_LABEL[e.status]}</span>
-                </td>
-                <td>{e.accountRole ? ROLE_LABEL[e.accountRole] : <span className="muted">—</span>}</td>
+                <td>{d.parent?.name ?? <span className="muted">—</span>}</td>
+                <td>{d.manager?.fullName ?? <span className="muted">—</span>}</td>
+                <td>{d.employeeCount}</td>
               </tr>
             ))}
             {data && data.items.length === 0 && (
               <tr>
                 <td colSpan={COLUMNS.length} className="empty">
-                  Không có nhân viên nào phù hợp.
+                  Không có phòng ban nào phù hợp.
                 </td>
               </tr>
             )}
@@ -176,7 +160,7 @@ export function EmployeeListPage() {
 
       <div className="pagination">
         <span className="muted">
-          {loading ? 'Đang tải…' : data ? `${data.total} nhân viên · Trang ${data.page}/${totalPages}` : ''}
+          {loading ? 'Đang tải…' : data ? `${data.total} phòng ban · Trang ${data.page}/${totalPages}` : ''}
         </span>
         <div className="row gap-sm">
           <button type="button" className="btn btn-secondary" disabled={!data || data.page <= 1} onClick={() => goToPage((data?.page ?? 1) - 1)}>

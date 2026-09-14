@@ -17,6 +17,9 @@ vi.mock('./pages/MyProfilePage', () => ({ MyProfilePage: () => 'Trang hồ sơ' 
 vi.mock('./pages/EmployeeListPage', () => ({ EmployeeListPage: () => 'Trang danh sách' }));
 vi.mock('./pages/EmployeeFormPage', () => ({ EmployeeFormPage: () => 'Trang form' }));
 vi.mock('./pages/EmployeeDetailPage', () => ({ EmployeeDetailPage: () => 'Trang chi tiết' }));
+vi.mock('./pages/DepartmentListPage', () => ({ DepartmentListPage: () => 'Trang phòng ban' }));
+vi.mock('./pages/DepartmentDetailPage', () => ({ DepartmentDetailPage: () => 'Trang chi tiết phòng ban' }));
+vi.mock('./pages/DepartmentFormPage', () => ({ DepartmentFormPage: () => 'Trang form phòng ban' }));
 
 function renderAt(path: string, user: SessionUser | null, loading = false) {
   auth.user = user;
@@ -54,6 +57,13 @@ describe('App routing', () => {
     ['/employees/new', 'HR', 'Trang form'],
     ['/employees/e1', 'HR', 'Trang chi tiết'],
     ['/employees/e1/edit', 'HR', 'Trang form'],
+    ['/departments', 'HR', 'Trang phòng ban'],
+    ['/departments', 'EMPLOYEE', 'Trang hồ sơ'],
+    ['/departments/d1', 'HR', 'Trang chi tiết phòng ban'],
+    ['/departments/new', 'ADMIN', 'Trang form phòng ban'],
+    ['/departments/d1/edit', 'ADMIN', 'Trang form phòng ban'],
+    ['/departments/new', 'HR', 'Trang danh sách'],
+    ['/departments/d1/edit', 'HR', 'Trang danh sách'],
     ['/khong-co', 'EMPLOYEE', 'Không tìm thấy trang.'],
   ] as const)('%s as %s shows %s', (path, role, text) => {
     renderAt(path, makeUser(role));

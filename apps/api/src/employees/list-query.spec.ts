@@ -15,11 +15,11 @@ describe('buildListWhere', () => {
   });
 
   it('adds exact department/position filters and a case-insensitive keyword over four fields', () => {
-    const where = buildListWhere({ q: '  an ', department: 'Kỹ thuật', position: 'Lập trình viên' });
+    const where = buildListWhere({ q: '  an ', departmentId: 'd1', position: 'Lập trình viên' });
     const contains = { contains: 'an', mode: 'insensitive' };
     expect(where).toEqual({
       deletedAt: null,
-      department: 'Kỹ thuật',
+      departmentId: 'd1',
       position: 'Lập trình viên',
       OR: [{ code: contains }, { fullName: contains }, { email: contains }, { phone: contains }],
     });
@@ -33,5 +33,9 @@ describe('buildListWhere', () => {
 describe('buildListOrderBy', () => {
   it('adds id as a stable tie-breaker', () => {
     expect(buildListOrderBy({ sortBy: 'fullName', sortOrder: 'asc' })).toEqual([{ fullName: 'asc' }, { id: 'asc' }]);
+  });
+
+  it('sorts the department column by department name', () => {
+    expect(buildListOrderBy({ sortBy: 'department', sortOrder: 'desc' })).toEqual([{ department: { name: 'desc' } }, { id: 'asc' }]);
   });
 });

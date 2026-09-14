@@ -28,19 +28,21 @@ function renderLayout(user: SessionUser | null) {
 afterEach(cleanup);
 
 describe('Layout', () => {
-  it('shows the employee menu, user name and role for HR', () => {
+  it('shows the employee and department menus, user name and role for HR', () => {
     renderLayout(makeUser('HR'));
 
     expect(screen.getByRole('link', { name: 'Nhân viên' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Phòng ban' }).getAttribute('href')).toBe('/departments');
     expect(screen.getByRole('link', { name: 'Hồ sơ của tôi' })).toBeTruthy();
     expect(screen.getByText('Trần Thị Hà')).toBeTruthy();
     expect(screen.getByText('Nội dung trang')).toBeTruthy();
   });
 
-  it('hides the employee menu for plain employees', () => {
+  it('hides the employee and department menus for plain employees', () => {
     renderLayout(makeUser('EMPLOYEE'));
 
     expect(screen.queryByRole('link', { name: 'Nhân viên' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Phòng ban' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Hồ sơ của tôi' })).toBeTruthy();
   });
 

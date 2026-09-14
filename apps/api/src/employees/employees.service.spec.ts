@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { EmployeeStatus, Prisma, Role, User } from '@prisma/client';
+import { Department, EmployeeStatus, Prisma, Role, User } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { PASSWORD_RULE, verifyPassword } from '../auth/password';
+import { departmentOptionsQuery } from '../departments/department.serializer';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AvatarStorage } from './avatar-storage';
-import type { EmployeeWithUser } from './employee.serializer';
+import type { EmployeeWithRelations } from './employee.serializer';
 import type { CreateEmployeeDto, ListEmployeesQueryDto, UpdateEmployeeDto } from './employees.dto';
 import { EmployeesService } from './employees.service';
 
@@ -25,7 +26,21 @@ function account(role: Role): User {
   };
 }
 
-function row(overrides: Partial<EmployeeWithUser> = {}): EmployeeWithUser {
+function department(overrides: Partial<Department> = {}): Department {
+  return {
+    id: 'd1',
+    code: 'KT',
+    name: 'Kỹ thuật',
+    parentId: null,
+    managerId: null,
+    createdAt: new Date('2024-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+    deletedAt: null,
+    ...overrides,
+  };
+}
+
+function row(overrides: Partial<EmployeeWithRelations> = {}): EmployeeWithRelations {
   return {
     id: 'e1',
     code: 'NV0001',
@@ -34,7 +49,8 @@ function row(overrides: Partial<EmployeeWithUser> = {}): EmployeeWithUser {
     phone: null,
     dateOfBirth: null,
     gender: null,
-    department: 'Kỹ thuật',
+    departmentId: 'd1',
+    department: department(),
     position: 'Lập trình viên',
     hireDate: new Date('2024-01-15T00:00:00.000Z'),
     status: EmployeeStatus.ACTIVE,
@@ -55,19 +71,25 @@ const createDto = (overrides: Partial<CreateEmployeeDto> = {}) =>
     fullName: 'Nguyễn Văn An',
     email: 'an@congty.vn',
     phone: null,
-    department: 'Kỹ thuật',
+    departmentId: 'd1',
     position: 'Lập trình viên',
     hireDate: '2024-01-15',
     dateOfBirth: '1990-05-20',
     ...overrides,
   }) as CreateEmployeeDto;
 
+const p2002 = (target: unknown) =>
+  new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test', meta: { target } });
+
 function setup() {
   const prisma = {
-    $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
+    $transaction: jest.fn(),
     employee: { count: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     user: { create: jest.fn(), update: jest.fn() },
+    department: { findMany: jest.fn(), findUnique: jest.fn().mockResolvedValue({ deletedAt: null }), updateMany: jest.fn() },
   };
+  // Batch transactions resolve their operations; interactive ones run the callback against the same client.
+  prisma.$transaction.mockImplementation((arg: unknown) => (typeof arg === 'function' ? arg(prisma) : Promise.all(arg as unknown[])));
   const avatars = {
     save: jest.fn(),
     remove: jest.fn(),
@@ -88,18 +110,23 @@ describe('EmployeesService', () => {
 
       const result = await service.list(query);
 
-      expect(prisma.employee.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 10, take: 10, include: { user: true } }));
-      expect(result).toMatchObject({ total: 25, page: 2, pageSize: 10, items: [{ id: 'e1', code: 'NV0001' }] });
+      expect(prisma.employee.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 10, take: 10, include: { user: true, department: true } }),
+      );
+      expect(result).toMatchObject({ total: 25, page: 2, pageSize: 10, items: [{ id: 'e1', code: 'NV0001', department: { id: 'd1', name: 'Kỹ thuật' } }] });
       expect(result.items[0]).not.toHaveProperty('salary');
     });
 
-    it('returns distinct departments and positions', async () => {
+    it('returns active departments and distinct positions', async () => {
       const { prisma, service } = setup();
-      prisma.employee.findMany
-        .mockResolvedValueOnce([{ department: 'Kinh doanh' }, { department: 'Kỹ thuật' }])
-        .mockResolvedValueOnce([{ position: 'Lập trình viên' }]);
+      prisma.department.findMany.mockResolvedValue([{ id: 'd1', code: 'KT', name: 'Kỹ thuật' }]);
+      prisma.employee.findMany.mockResolvedValue([{ position: 'Lập trình viên' }]);
 
-      await expect(service.filterOptions()).resolves.toEqual({ departments: ['Kinh doanh', 'Kỹ thuật'], positions: ['Lập trình viên'] });
+      await expect(service.filterOptions()).resolves.toEqual({
+        departments: [{ id: 'd1', code: 'KT', name: 'Kỹ thuật' }],
+        positions: ['Lập trình viên'],
+      });
+      expect(prisma.department.findMany).toHaveBeenCalledWith(departmentOptionsQuery);
     });
 
     it('reports a missing employee', async () => {
@@ -118,7 +145,7 @@ describe('EmployeesService', () => {
       const result = await service.create(createDto({ createAccount: false }), actor(Role.HR));
 
       const { data } = prisma.employee.create.mock.calls[0][0];
-      expect(data).toMatchObject({ code: 'NV0001', phone: null, hireDate: new Date('2024-01-15T00:00:00.000Z'), dateOfBirth: new Date('1990-05-20T00:00:00.000Z') });
+      expect(data).toMatchObject({ code: 'NV0001', departmentId: 'd1', phone: null, hireDate: new Date('2024-01-15T00:00:00.000Z'), dateOfBirth: new Date('1990-05-20T00:00:00.000Z') });
       expect(data).not.toHaveProperty('createAccount');
       expect(data.user).toBeUndefined();
       expect(result.tempPassword).toBeNull();
@@ -153,11 +180,21 @@ describe('EmployeesService', () => {
       );
     });
 
+    it('rejects a missing or deleted department', async () => {
+      const { prisma, service } = setup();
+      for (const found of [null, { deletedAt: new Date() }]) {
+        prisma.department.findUnique.mockResolvedValueOnce(found);
+        await expect(service.create(createDto(), actor(Role.HR))).rejects.toThrow(
+          new BadRequestException('Phòng ban không tồn tại hoặc đã bị xóa'),
+        );
+      }
+      expect(prisma.department.findUnique).toHaveBeenCalledWith({ where: { id: 'd1' }, select: { deletedAt: true } });
+      expect(prisma.employee.create).not.toHaveBeenCalled();
+    });
+
     it('maps unique violations to a 409', async () => {
       const { prisma, service } = setup();
-      prisma.employee.create.mockRejectedValue(
-        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test', meta: { target: ['code'] } }),
-      );
+      prisma.employee.create.mockRejectedValue(p2002(['code']));
 
       await expect(service.create(createDto(), actor(Role.HR))).rejects.toThrow(new ConflictException('Mã nhân viên đã tồn tại'));
     });
@@ -173,7 +210,48 @@ describe('EmployeesService', () => {
       const result = await service.update('e1', dto, actor(Role.HR));
 
       expect(prisma.employee.update.mock.calls[0][0].data).toEqual({ fullName: 'Nguyễn Văn Bình', dateOfBirth: null });
+      expect(prisma.department.findUnique).not.toHaveBeenCalled();
+      expect(prisma.department.updateMany).not.toHaveBeenCalled();
       expect(result.fullName).toBe('Nguyễn Văn Bình');
+    });
+
+    it('moves the employee to another active department and removes their head role in the old one', async () => {
+      const { prisma, service } = setup();
+      prisma.employee.findUnique.mockResolvedValue(row());
+      prisma.employee.update.mockResolvedValue(row({ departmentId: 'd2', department: department({ id: 'd2', code: 'NS', name: 'Nhân sự' }) }));
+
+      const result = await service.update('e1', { departmentId: 'd2' } as UpdateEmployeeDto, actor(Role.HR));
+
+      expect(prisma.department.findUnique).toHaveBeenCalledWith({ where: { id: 'd2' }, select: { deletedAt: true } });
+      expect(prisma.employee.update.mock.calls[0][0].data).toEqual({ departmentId: 'd2' });
+      expect(prisma.department.updateMany).toHaveBeenCalledWith({ where: { managerId: 'e1' }, data: { managerId: null } });
+      expect(result.department).toEqual({ id: 'd2', code: 'NS', name: 'Nhân sự' });
+    });
+
+    it('keeps the head role when the department is unchanged and refuses a deleted target department', async () => {
+      const { prisma, service } = setup();
+      prisma.employee.findUnique.mockResolvedValue(row());
+      prisma.employee.update.mockResolvedValue(row());
+
+      await service.update('e1', { departmentId: 'd1' } as UpdateEmployeeDto, actor(Role.HR));
+      expect(prisma.department.findUnique).not.toHaveBeenCalled();
+      expect(prisma.department.updateMany).not.toHaveBeenCalled();
+
+      prisma.department.findUnique.mockResolvedValueOnce({ deletedAt: new Date() });
+      await expect(service.update('e1', { departmentId: 'd2' } as UpdateEmployeeDto, actor(Role.HR))).rejects.toThrow(
+        new BadRequestException('Phòng ban không tồn tại hoặc đã bị xóa'),
+      );
+      expect(prisma.employee.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('maps unique violations raised inside the transaction to a 409', async () => {
+      const { prisma, service } = setup();
+      prisma.employee.findUnique.mockResolvedValue(row());
+      prisma.employee.update.mockRejectedValue(p2002(['email']));
+
+      await expect(service.update('e1', { email: 'x@y.vn' } as UpdateEmployeeDto, actor(Role.HR))).rejects.toThrow(
+        new ConflictException('Email đã được dùng cho nhân viên khác (kể cả nhân viên đã nghỉ)'),
+      );
     });
 
     it('refuses to edit a resigned employee', async () => {
@@ -195,7 +273,7 @@ describe('EmployeesService', () => {
   });
 
   describe('remove and restore', () => {
-    it('soft-deletes by marking the employee resigned', async () => {
+    it('soft-deletes by marking the employee resigned and removes their head role', async () => {
       const { prisma, service } = setup();
       prisma.employee.findUnique.mockResolvedValue(row());
 
@@ -205,6 +283,7 @@ describe('EmployeesService', () => {
         where: { id: 'e1' },
         data: { status: EmployeeStatus.RESIGNED, deletedAt: expect.any(Date) },
       });
+      expect(prisma.department.updateMany).toHaveBeenCalledWith({ where: { managerId: 'e1' }, data: { managerId: null } });
     });
 
     it('refuses to delete yourself or an already resigned employee', async () => {
@@ -236,6 +315,16 @@ describe('EmployeesService', () => {
       prisma.employee.findUnique.mockResolvedValue(row());
 
       await expect(service.restore('e1', actor(Role.HR))).rejects.toThrow(new ConflictException('Nhân viên chưa bị xóa'));
+    });
+
+    it('refuses to restore an employee whose department was deleted', async () => {
+      const { prisma, service } = setup();
+      prisma.employee.findUnique.mockResolvedValue(row({ deletedAt: new Date(), department: department({ deletedAt: new Date() }) }));
+
+      await expect(service.restore('e1', actor(Role.HR))).rejects.toThrow(
+        new ConflictException('Phòng ban "Kỹ thuật" đã bị xóa, hãy khôi phục phòng ban trước'),
+      );
+      expect(prisma.employee.update).not.toHaveBeenCalled();
     });
   });
 

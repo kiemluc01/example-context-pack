@@ -19,7 +19,7 @@ describe('errorMessage', () => {
 
 describe('toQueryString', () => {
   it('skips empty values', () => {
-    expect(toQueryString({ q: 'an', department: '', page: 2, status: undefined })).toBe('?q=an&page=2');
+    expect(toQueryString({ q: 'an', departmentId: '', page: 2, status: undefined })).toBe('?q=an&page=2');
     expect(toQueryString({})).toBe('');
   });
 });
@@ -65,6 +65,20 @@ describe('request', () => {
 
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     await expect(api.me()).rejects.toMatchObject({ status: 0, message: 'Không kết nối được máy chủ. Vui lòng thử lại.' });
+  });
+
+  it('calls the department endpoints with query strings and JSON bodies', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(200, {})));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.listDepartments({ q: 'kinh', status: undefined, page: 2 });
+    await api.updateDepartment('d1', { managerId: null });
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/departments?q=kinh&page=2');
+    expect(fetchMock.mock.calls[1]).toEqual([
+      '/api/departments/d1',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ managerId: null }) }),
+    ]);
   });
 
   it('explains a 413 upload without a JSON body', async () => {

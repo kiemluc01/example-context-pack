@@ -6,6 +6,7 @@ import {
   NEW_PASSWORD,
   PASSWORD,
   WRONG_PASSWORD,
+  createDepartment,
   createEmployeeWithAccount,
   createTestApp,
   employeeData,
@@ -57,7 +58,7 @@ describe('Auth (e2e)', () => {
     it('rejects a soft-deleted employee and an employee without an account', async () => {
       const emp = await createEmployeeWithAccount(prisma, Role.EMPLOYEE);
       await prisma.employee.update({ where: { id: emp.id }, data: { deletedAt: new Date(), status: 'RESIGNED' } });
-      const noAccount = await prisma.employee.create({ data: employeeData() });
+      const noAccount = await prisma.employee.create({ data: employeeData((await createDepartment(prisma)).id) });
 
       await http().post('/api/auth/login').send({ email: emp.email, password: PASSWORD }).expect(401);
       await http().post('/api/auth/login').send({ email: noAccount.email, password: PASSWORD }).expect(401);

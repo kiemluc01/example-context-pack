@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { SESSION_TTL_SECONDS, requireJwtSecret } from './auth/auth.constants';
+import { DepartmentsModule } from './departments/departments.module';
 import { EmployeesModule } from './employees/employees.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -18,6 +19,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     AuthModule,
     EmployeesModule,
+    DepartmentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
 })

@@ -3,6 +3,7 @@ export type EmployeeStatus = 'PROBATION' | 'ACTIVE' | 'ON_LEAVE' | 'RESIGNED';
 export type EditableStatus = Exclude<EmployeeStatus, 'RESIGNED'>;
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 export type SortField = 'code' | 'fullName' | 'department' | 'position' | 'hireDate' | 'createdAt';
+export type DepartmentSortField = 'code' | 'name' | 'createdAt';
 
 export interface SessionUser {
   id: string;
@@ -11,13 +12,19 @@ export interface SessionUser {
   employee: { id: string; code: string; fullName: string; email: string };
 }
 
+export interface DepartmentRef {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface EmployeeListItem {
   id: string;
   code: string;
   fullName: string;
   email: string;
   phone: string | null;
-  department: string;
+  department: DepartmentRef;
   position: string;
   status: EmployeeStatus;
   hireDate: string;
@@ -45,7 +52,7 @@ export interface Page<T> {
 
 export interface ListParams {
   q?: string;
-  department?: string;
+  departmentId?: string;
   position?: string;
   status?: EmployeeStatus;
   sortBy?: SortField;
@@ -61,10 +68,37 @@ export interface EmployeePayload {
   phone: string | null;
   dateOfBirth: string | null;
   gender: Gender | null;
-  department: string;
+  departmentId: string;
   position: string;
   hireDate: string;
   status: EditableStatus;
   salary: number | null;
   nationalId: string | null;
+}
+
+export interface Department extends DepartmentRef {
+  parent: DepartmentRef | null;
+  manager: { id: string; code: string; fullName: string } | null;
+  /** Employees that are not soft-deleted. */
+  employeeCount: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface DepartmentListParams {
+  q?: string;
+  parentId?: string;
+  status?: 'ACTIVE' | 'DELETED';
+  sortBy?: DepartmentSortField;
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
+export interface DepartmentPayload {
+  code: string;
+  name: string;
+  parentId: string | null;
+  managerId?: string | null;
 }

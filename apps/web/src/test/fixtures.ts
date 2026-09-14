@@ -1,4 +1,4 @@
-import type { EmployeeDetail, Role, SessionUser } from '../types';
+import type { Department, EmployeeDetail, Role, SessionUser } from '../types';
 
 export function makeEmployee(overrides: Partial<EmployeeDetail> = {}): EmployeeDetail {
   return {
@@ -7,7 +7,7 @@ export function makeEmployee(overrides: Partial<EmployeeDetail> = {}): EmployeeD
     fullName: 'Nguyễn Văn An',
     email: 'an@congty.vn',
     phone: '0912345678',
-    department: 'Kỹ thuật',
+    department: { id: 'd1', code: 'KT', name: 'Kỹ thuật' },
     position: 'Lập trình viên',
     status: 'ACTIVE',
     hireDate: '2024-01-15',
@@ -21,6 +21,21 @@ export function makeEmployee(overrides: Partial<EmployeeDetail> = {}): EmployeeD
     createdAt: '2024-01-15T08:00:00.000Z',
     updatedAt: '2024-02-01T08:00:00.000Z',
     account: null,
+    ...overrides,
+  };
+}
+
+export function makeDepartment(overrides: Partial<Department> = {}): Department {
+  return {
+    id: 'd1',
+    code: 'KT',
+    name: 'Kỹ thuật',
+    parent: { id: 'd-bgd', code: 'BGD', name: 'Ban Giám đốc' },
+    manager: { id: 'e1', code: 'NV0001', fullName: 'Nguyễn Văn An' },
+    employeeCount: 12,
+    createdAt: '2024-01-15T08:00:00.000Z',
+    updatedAt: '2024-02-01T08:00:00.000Z',
+    deletedAt: null,
     ...overrides,
   };
 }

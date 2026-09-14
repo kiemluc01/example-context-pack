@@ -9,6 +9,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Length,
   Matches,
   Max,
@@ -22,7 +23,7 @@ export const SORT_FIELDS = ['code', 'fullName', 'department', 'position', 'hireD
 export type SortField = (typeof SORT_FIELDS)[number];
 export const MAX_SALARY = 999_999_999_999;
 
-const CODE_RULE = /^[A-Z0-9_-]{1,20}$/;
+export const CODE_RULE = /^[A-Z0-9_-]{1,20}$/;
 const PHONE_RULE = /^(\+84|0)\d{9,10}$/;
 const DATE_RULE = /^\d{4}-\d{2}-\d{2}$/;
 const NATIONAL_ID_RULE = /^\d{12}$/;
@@ -34,7 +35,7 @@ const msg = {
   phone: 'Số điện thoại không hợp lệ (vd: 0912345678 hoặc +84912345678)',
   date: 'Ngày không hợp lệ (định dạng YYYY-MM-DD)',
   gender: 'Giới tính không hợp lệ',
-  department: 'Phòng ban bắt buộc, tối đa 100 ký tự',
+  department: 'Vui lòng chọn phòng ban',
   position: 'Chức vụ bắt buộc, tối đa 100 ký tự',
   status: 'Trạng thái chỉ được là Thử việc, Đang làm việc hoặc Nghỉ phép dài hạn',
   salary: `Lương phải là số nguyên từ 0 đến ${MAX_SALARY}`,
@@ -43,14 +44,14 @@ const msg = {
 };
 
 const str = (fn: (s: string) => string) => Transform(({ value }) => (typeof value === 'string' ? fn(value) : value));
-const Trim = () => str((s) => s.trim());
-const Upper = () => str((s) => s.trim().toUpperCase());
+export const Trim = () => str((s) => s.trim());
+export const Upper = () => str((s) => s.trim().toUpperCase());
 const Lower = () => str((s) => s.trim().toLowerCase());
 /** Optional text field: blank becomes null (clears the value). */
 const Blank = (fn: (s: string) => string = (s) => s) =>
   str((s) => (s.trim() === '' ? (null as unknown as string) : fn(s.trim())));
 /** Validate a required field only when it is present (partial update); null is rejected. */
-const Present = () => ValidateIf((_obj, value) => value !== undefined);
+export const Present = () => ValidateIf((_obj, value) => value !== undefined);
 
 export class CreateEmployeeDto {
   @Upper() @IsString({ message: msg.code }) @Matches(CODE_RULE, { message: msg.code })
@@ -71,8 +72,8 @@ export class CreateEmployeeDto {
   @IsOptional() @IsEnum(Gender, { message: msg.gender })
   gender?: Gender | null;
 
-  @Trim() @IsString({ message: msg.department }) @Length(1, 100, { message: msg.department })
-  department: string;
+  @IsUUID('all', { message: msg.department })
+  departmentId: string;
 
   @Trim() @IsString({ message: msg.position }) @Length(1, 100, { message: msg.position })
   position: string;
@@ -115,8 +116,8 @@ export class UpdateEmployeeDto {
   @IsOptional() @IsEnum(Gender, { message: msg.gender })
   gender?: Gender | null;
 
-  @Present() @Trim() @IsString({ message: msg.department }) @Length(1, 100, { message: msg.department })
-  department?: string;
+  @Present() @IsUUID('all', { message: msg.department })
+  departmentId?: string;
 
   @Present() @Trim() @IsString({ message: msg.position }) @Length(1, 100, { message: msg.position })
   position?: string;
@@ -143,8 +144,8 @@ export class ListEmployeesQueryDto {
   @IsOptional() @Trim() @IsString() @MaxLength(100)
   q?: string;
 
-  @IsOptional() @Trim() @IsString() @MaxLength(100)
-  department?: string;
+  @IsOptional() @IsUUID('all', { message: 'Phòng ban không hợp lệ' })
+  departmentId?: string;
 
   @IsOptional() @Trim() @IsString() @MaxLength(100)
   position?: string;

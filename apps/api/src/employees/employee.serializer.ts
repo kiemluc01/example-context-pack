@@ -1,6 +1,8 @@
-import type { Employee, User } from '@prisma/client';
+import type { Department, Employee, Prisma, User } from '@prisma/client';
 
-export type EmployeeWithUser = Employee & { user: User | null };
+export const employeeInclude = { user: true, department: true } satisfies Prisma.EmployeeInclude;
+
+export type EmployeeWithRelations = Employee & { user: User | null; department: Department };
 
 export const toDateString = (date: Date | null): string | null => (date ? date.toISOString().slice(0, 10) : null);
 
@@ -8,14 +10,14 @@ export const toDateString = (date: Date | null): string | null => (date ? date.t
 export const parseDate = (value: string): Date => new Date(`${value}T00:00:00.000Z`);
 
 /** List rows omit salary and national ID. */
-export function toListItem(e: EmployeeWithUser) {
+export function toListItem(e: EmployeeWithRelations) {
   return {
     id: e.id,
     code: e.code,
     fullName: e.fullName,
     email: e.email,
     phone: e.phone,
-    department: e.department,
+    department: { id: e.department.id, code: e.department.code, name: e.department.name },
     position: e.position,
     status: e.status,
     hireDate: toDateString(e.hireDate),
@@ -25,7 +27,7 @@ export function toListItem(e: EmployeeWithUser) {
   };
 }
 
-export function toDetail(e: EmployeeWithUser) {
+export function toDetail(e: EmployeeWithRelations) {
   return {
     ...toListItem(e),
     dateOfBirth: toDateString(e.dateOfBirth),

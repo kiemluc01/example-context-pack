@@ -1,4 +1,8 @@
 import type {
+  Department,
+  DepartmentListParams,
+  DepartmentPayload,
+  DepartmentRef,
   EmployeeDetail,
   EmployeeListItem,
   EmployeePayload,
@@ -28,7 +32,7 @@ export function errorMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
-export function toQueryString(params: ListParams): string {
+export function toQueryString(params: object): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
@@ -80,7 +84,7 @@ export const api = {
     request<SessionUser>('/auth/change-password', { method: 'POST', json: { currentPassword, newPassword } }),
 
   listEmployees: (params: ListParams) => request<Page<EmployeeListItem>>(`/employees${toQueryString(params)}`),
-  filterOptions: () => request<{ departments: string[]; positions: string[] }>('/employees/filter-options'),
+  filterOptions: () => request<{ departments: DepartmentRef[]; positions: string[] }>('/employees/filter-options'),
   myProfile: () => request<EmployeeDetail>('/employees/me'),
   getEmployee: (id: string) => request<EmployeeDetail>(`/employees/${id}`),
   createEmployee: (payload: EmployeePayload & { createAccount?: boolean; accountRole?: Role }) =>
@@ -102,4 +106,13 @@ export const api = {
   },
   avatarUrl: (employee: Pick<EmployeeDetail, 'id' | 'updatedAt'>) =>
     `/api/employees/${employee.id}/avatar?v=${encodeURIComponent(employee.updatedAt)}`,
+
+  listDepartments: (params: DepartmentListParams) => request<Page<Department>>(`/departments${toQueryString(params)}`),
+  departmentOptions: () => request<DepartmentRef[]>('/departments/options'),
+  getDepartment: (id: string) => request<Department>(`/departments/${id}`),
+  createDepartment: (payload: DepartmentPayload) => request<Department>('/departments', { method: 'POST', json: payload }),
+  updateDepartment: (id: string, payload: Partial<DepartmentPayload>) =>
+    request<Department>(`/departments/${id}`, { method: 'PATCH', json: payload }),
+  deleteDepartment: (id: string) => request<void>(`/departments/${id}`, { method: 'DELETE' }),
+  restoreDepartment: (id: string) => request<Department>(`/departments/${id}/restore`, { method: 'POST' }),
 };

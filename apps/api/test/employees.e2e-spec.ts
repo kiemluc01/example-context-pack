@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { Department, Role } from '@prisma/client';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import request from 'supertest';
@@ -9,6 +9,7 @@ import {
   JPG_BYTES,
   PASSWORD,
   PNG_BYTES,
+  createDepartment,
   createEmployeeWithAccount,
   createTestApp,
   employeeData,
@@ -16,31 +17,36 @@ import {
   resetDatabase,
 } from './helpers';
 
-const validPayload = (overrides: Record<string, unknown> = {}) => ({
-  code: 'nv-100',
-  fullName: '  Nguyễn Văn An ',
-  email: 'An.Nguyen@CongTy.vn',
-  phone: '0912 345 678',
-  dateOfBirth: '1995-06-20',
-  gender: 'MALE',
-  department: 'Kỹ thuật',
-  position: 'Lập trình viên',
-  hireDate: '2024-03-01',
-  status: 'PROBATION',
-  salary: 15000000,
-  nationalId: '001095012345',
-  ...overrides,
-});
+const MISSING_ID = '00000000-0000-4000-8000-000000000000';
 
 describe('Employees (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let bgd: Department;
+  let ns: Department;
+  let kt: Department;
   let admin: Awaited<ReturnType<typeof createEmployeeWithAccount>>;
   let hr: Awaited<ReturnType<typeof createEmployeeWithAccount>>;
   let staff: Awaited<ReturnType<typeof createEmployeeWithAccount>>;
   let asAdmin: Agent;
   let asHr: Agent;
   let asStaff: Agent;
+
+  const validPayload = (overrides: Record<string, unknown> = {}) => ({
+    code: 'nv-100',
+    fullName: '  Nguyễn Văn An ',
+    email: 'An.Nguyen@CongTy.vn',
+    phone: '0912 345 678',
+    dateOfBirth: '1995-06-20',
+    gender: 'MALE',
+    departmentId: kt.id,
+    position: 'Lập trình viên',
+    hireDate: '2024-03-01',
+    status: 'PROBATION',
+    salary: 15000000,
+    nationalId: '001095012345',
+    ...overrides,
+  });
 
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());
@@ -49,10 +55,13 @@ describe('Employees (e2e)', () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    admin = await createEmployeeWithAccount(prisma, Role.ADMIN, { employee: { department: 'Ban Giám đốc' } });
-    hr = await createEmployeeWithAccount(prisma, Role.HR, { employee: { department: 'Nhân sự', salary: 20000000 } });
+    bgd = await createDepartment(prisma, { code: 'BGD', name: 'Ban Giám đốc' });
+    ns = await createDepartment(prisma, { code: 'NS', name: 'Nhân sự' });
+    kt = await createDepartment(prisma, { code: 'KT', name: 'Kỹ thuật' });
+    admin = await createEmployeeWithAccount(prisma, Role.ADMIN, { employee: { departmentId: bgd.id } });
+    hr = await createEmployeeWithAccount(prisma, Role.HR, { employee: { departmentId: ns.id, salary: 20000000 } });
     staff = await createEmployeeWithAccount(prisma, Role.EMPLOYEE, {
-      employee: { salary: 12000000, nationalId: '001090000001' },
+      employee: { departmentId: kt.id, salary: 12000000, nationalId: '001090000001' },
     });
     [asAdmin, asHr, asStaff] = await Promise.all([login(app, admin.email), login(app, hr.email), login(app, staff.email)]);
   });
@@ -69,9 +78,15 @@ describe('Employees (e2e)', () => {
       expect((await prisma.employee.findUniqueOrThrow({ where: { id: staff.id } })).salary?.toNumber()).toBe(12000000);
     });
 
-    it('EMPLOYEE sees their own profile including salary and national ID', async () => {
+    it('EMPLOYEE sees their own profile including salary, national ID and department', async () => {
       const res = await asStaff.get('/api/employees/me').expect(200);
-      expect(res.body).toMatchObject({ id: staff.id, salary: 12000000, nationalId: '001090000001', account: { role: 'EMPLOYEE' } });
+      expect(res.body).toMatchObject({
+        id: staff.id,
+        salary: 12000000,
+        nationalId: '001090000001',
+        department: { id: kt.id, code: 'KT', name: 'Kỹ thuật' },
+        account: { role: 'EMPLOYEE' },
+      });
     });
 
     it('list rows never expose salary, national ID or password hashes', async () => {
@@ -96,6 +111,7 @@ describe('Employees (e2e)', () => {
         email: 'an.nguyen@congty.vn',
         phone: '0912345678',
         dateOfBirth: '1995-06-20',
+        department: { id: kt.id, code: 'KT', name: 'Kỹ thuật' },
         hireDate: '2024-03-01',
         status: 'PROBATION',
         salary: 15000000,
@@ -120,7 +136,7 @@ describe('Employees (e2e)', () => {
           expect.stringContaining('Mã nhân viên'),
           'Họ tên bắt buộc, tối đa 100 ký tự',
           'Email không hợp lệ',
-          'Phòng ban bắt buộc, tối đa 100 ký tự',
+          'Vui lòng chọn phòng ban',
           'Chức vụ bắt buộc, tối đa 100 ký tự',
           'Ngày không hợp lệ (định dạng YYYY-MM-DD)',
         ]),
@@ -137,6 +153,7 @@ describe('Employees (e2e)', () => {
       ['RESIGNED status', { status: 'RESIGNED' }, 'Trạng thái'],
       ['unknown gender', { gender: 'X' }, 'Giới tính'],
       ['too long name', { fullName: 'a'.repeat(101) }, 'Họ tên'],
+      ['department name instead of id', { departmentId: 'Kỹ thuật' }, 'Vui lòng chọn phòng ban'],
     ])('rejects invalid %s', async (_label, overrides, expected) => {
       const res = await asHr.post('/api/employees').send(validPayload(overrides)).expect(400);
       expect(res.body.message.join(' ')).toContain(expected);
@@ -146,6 +163,15 @@ describe('Employees (e2e)', () => {
       await asHr.post('/api/employees').send(validPayload({ isAdmin: true })).expect(400);
       const res = await asHr.post('/api/employees').send(validPayload({ dateOfBirth: '2999-01-01' })).expect(400);
       expect(res.body.message).toBe('Ngày sinh phải trước ngày hôm nay');
+    });
+
+    it('rejects an unknown or deleted department', async () => {
+      const unknown = await asHr.post('/api/employees').send(validPayload({ departmentId: MISSING_ID })).expect(400);
+      expect(unknown.body.message).toBe('Phòng ban không tồn tại hoặc đã bị xóa');
+
+      const old = await createDepartment(prisma, { deletedAt: new Date() });
+      await asHr.post('/api/employees').send(validPayload({ departmentId: old.id })).expect(400);
+      expect(await prisma.employee.count({ where: { email: 'an.nguyen@congty.vn' } })).toBe(0);
     });
 
     it.each([
@@ -159,7 +185,7 @@ describe('Employees (e2e)', () => {
     });
 
     it('treats the email of a resigned employee as taken', async () => {
-      await prisma.employee.create({ data: employeeData({ email: 'cu@test.vn', deletedAt: new Date(), status: 'RESIGNED' }) });
+      await prisma.employee.create({ data: employeeData(kt.id, { email: 'cu@test.vn', deletedAt: new Date(), status: 'RESIGNED' }) });
       await asHr.post('/api/employees').send(validPayload({ email: 'cu@test.vn' })).expect(409);
     });
 
@@ -196,8 +222,20 @@ describe('Employees (e2e)', () => {
       expect(res.body).toMatchObject({ position: 'Trưởng nhóm', salary: 18000000, nationalId: null, phone: null, email: staff.email });
     });
 
+    it('moves an employee to another department and removes their head role in the old one', async () => {
+      await prisma.department.update({ where: { id: kt.id }, data: { managerId: staff.id } });
+
+      const res = await asHr.patch(`/api/employees/${staff.id}`).send({ departmentId: ns.id }).expect(200);
+
+      expect(res.body.department).toEqual({ id: ns.id, code: 'NS', name: 'Nhân sự' });
+      expect((await prisma.department.findUniqueOrThrow({ where: { id: kt.id } })).managerId).toBeNull();
+      const old = await createDepartment(prisma, { deletedAt: new Date() });
+      await asHr.patch(`/api/employees/${staff.id}`).send({ departmentId: old.id }).expect(400);
+    });
+
     it('rejects null for required fields and RESIGNED as status', async () => {
       await asHr.patch(`/api/employees/${staff.id}`).send({ fullName: null }).expect(400);
+      await asHr.patch(`/api/employees/${staff.id}`).send({ departmentId: null }).expect(400);
       await asHr.patch(`/api/employees/${staff.id}`).send({ status: 'RESIGNED' }).expect(400);
     });
 
@@ -213,7 +251,7 @@ describe('Employees (e2e)', () => {
     });
 
     it('returns 404 for unknown or malformed ids and 409 for resigned employees', async () => {
-      await asHr.patch('/api/employees/00000000-0000-4000-8000-000000000000').send({ position: 'X' }).expect(404);
+      await asHr.patch(`/api/employees/${MISSING_ID}`).send({ position: 'X' }).expect(404);
       await asHr.get('/api/employees/not-a-uuid').expect(404);
       await prisma.employee.update({ where: { id: staff.id }, data: { deletedAt: new Date(), status: 'RESIGNED' } });
       await asHr.patch(`/api/employees/${staff.id}`).send({ position: 'X' }).expect(409);
@@ -237,6 +275,14 @@ describe('Employees (e2e)', () => {
       expect(detail.body.status).toBe('RESIGNED');
     });
 
+    it('removes the head role of a deleted employee', async () => {
+      await prisma.department.update({ where: { id: kt.id }, data: { managerId: staff.id } });
+
+      await asHr.delete(`/api/employees/${staff.id}`).expect(204);
+
+      expect((await prisma.department.findUniqueOrThrow({ where: { id: kt.id } })).managerId).toBeNull();
+    });
+
     it('locks the account of the deleted employee and unlocks it on restore', async () => {
       await asHr.delete(`/api/employees/${staff.id}`).expect(204);
       await asStaff.get('/api/employees/me').expect(401);
@@ -246,6 +292,15 @@ describe('Employees (e2e)', () => {
 
       expect(restored.body).toMatchObject({ status: 'ACTIVE', deletedAt: null });
       await login(app, staff.email);
+    });
+
+    it('refuses to restore an employee into a deleted department', async () => {
+      await asHr.delete(`/api/employees/${staff.id}`).expect(204);
+      await prisma.department.update({ where: { id: kt.id }, data: { deletedAt: new Date() } });
+
+      const res = await asHr.post(`/api/employees/${staff.id}/restore`).expect(409);
+
+      expect(res.body.message).toBe('Phòng ban "Kỹ thuật" đã bị xóa, hãy khôi phục phòng ban trước');
     });
 
     it('rejects deleting twice, restoring an active employee and deleting yourself', async () => {
@@ -264,13 +319,16 @@ describe('Employees (e2e)', () => {
   });
 
   describe('list', () => {
+    let kd: Department;
+
     beforeEach(async () => {
+      kd = await createDepartment(prisma, { code: 'KD', name: 'Kinh doanh' });
       await prisma.employee.createMany({
         data: [
-          employeeData({ code: 'KD01', fullName: 'Trần Thị Bích', email: 'bich@test.vn', phone: '0987000111', department: 'Kinh doanh', position: 'Nhân viên kinh doanh', status: 'ACTIVE' }),
-          employeeData({ code: 'KD02', fullName: 'Lê Văn Cường', email: 'cuong@test.vn', department: 'Kinh doanh', position: 'Trưởng phòng', status: 'ON_LEAVE' }),
-          employeeData({ code: 'KT09', fullName: 'Phạm Minh Anh', email: 'anh@test.vn', department: 'Kỹ thuật', position: 'Lập trình viên', status: 'PROBATION' }),
-          employeeData({ code: 'OLD1', fullName: 'Trần Văn Cũ', email: 'cu@test.vn', department: 'Kinh doanh', position: 'Trưởng phòng', status: 'RESIGNED', deletedAt: new Date() }),
+          employeeData(kd.id, { code: 'KD01', fullName: 'Trần Thị Bích', email: 'bich@test.vn', phone: '0987000111', position: 'Nhân viên kinh doanh', status: 'ACTIVE' }),
+          employeeData(kd.id, { code: 'KD02', fullName: 'Lê Văn Cường', email: 'cuong@test.vn', position: 'Trưởng phòng', status: 'ON_LEAVE' }),
+          employeeData(kt.id, { code: 'KT09', fullName: 'Phạm Minh Anh', email: 'anh@test.vn', position: 'Lập trình viên', status: 'PROBATION' }),
+          employeeData(kd.id, { code: 'OLD1', fullName: 'Trần Văn Cũ', email: 'cu@test.vn', position: 'Trưởng phòng', status: 'RESIGNED', deletedAt: new Date() }),
         ],
       });
     });
@@ -293,17 +351,28 @@ describe('Employees (e2e)', () => {
     });
 
     it('combines department, position and status filters', async () => {
-      const byDept = await asHr.get('/api/employees').query({ department: 'Kinh doanh' }).expect(200);
+      const byDept = await asHr.get('/api/employees').query({ departmentId: kd.id }).expect(200);
       expect(codes(byDept).sort()).toEqual(['KD01', 'KD02']);
-      const combined = await asHr.get('/api/employees').query({ department: 'Kinh doanh', position: 'Trưởng phòng', status: 'ON_LEAVE' }).expect(200);
+      const combined = await asHr.get('/api/employees').query({ departmentId: kd.id, position: 'Trưởng phòng', status: 'ON_LEAVE' }).expect(200);
       expect(codes(combined)).toEqual(['KD02']);
+      await asHr.get('/api/employees').query({ departmentId: 'Kinh doanh' }).expect(400);
     });
 
-    it('sorts by a whitelisted column in both directions', async () => {
-      const asc = await asHr.get('/api/employees').query({ sortBy: 'code', sortOrder: 'asc', department: 'Kinh doanh' }).expect(200);
+    it('sorts by a whitelisted column in both directions, the department column by name', async () => {
+      const asc = await asHr.get('/api/employees').query({ sortBy: 'code', sortOrder: 'asc', departmentId: kd.id }).expect(200);
       expect(codes(asc)).toEqual(['KD01', 'KD02']);
-      const desc = await asHr.get('/api/employees').query({ sortBy: 'code', sortOrder: 'desc', department: 'Kinh doanh' }).expect(200);
+      const desc = await asHr.get('/api/employees').query({ sortBy: 'code', sortOrder: 'desc', departmentId: kd.id }).expect(200);
       expect(codes(desc)).toEqual(['KD02', 'KD01']);
+
+      const byDepartment = await asHr.get('/api/employees').query({ sortBy: 'department', sortOrder: 'asc' }).expect(200);
+      expect(byDepartment.body.items.map((e: { department: { name: string } }) => e.department.name)).toEqual([
+        'Ban Giám đốc',
+        'Kinh doanh',
+        'Kinh doanh',
+        'Kỹ thuật',
+        'Kỹ thuật',
+        'Nhân sự',
+      ]);
       await asHr.get('/api/employees').query({ sortBy: 'salary' }).expect(400);
     });
 
@@ -321,16 +390,20 @@ describe('Employees (e2e)', () => {
       await asHr.get('/api/employees').query({ page: 0 }).expect(400);
     });
 
-    it('lists distinct departments and positions of active employees', async () => {
+    it('lists active departments and distinct positions of active employees as filter options', async () => {
+      await createDepartment(prisma, { code: 'OLD', name: 'Phòng cũ', deletedAt: new Date() });
+
       const res = await asHr.get('/api/employees/filter-options').expect(200);
-      expect(res.body.departments).toEqual(['Ban Giám đốc', 'Kinh doanh', 'Kỹ thuật', 'Nhân sự']);
+
+      expect(res.body.departments.map((d: { name: string }) => d.name)).toEqual(['Ban Giám đốc', 'Kinh doanh', 'Kỹ thuật', 'Nhân sự']);
+      expect(res.body.departments[0]).toEqual({ id: bgd.id, code: 'BGD', name: 'Ban Giám đốc' });
       expect(res.body.positions).toEqual(['Lập trình viên', 'Nhân viên kinh doanh', 'Trưởng phòng']);
     });
   });
 
   describe('accounts', () => {
     it('creates an account for an existing employee once', async () => {
-      const plain = await prisma.employee.create({ data: employeeData() });
+      const plain = await prisma.employee.create({ data: employeeData(kt.id) });
 
       const res = await asHr.post(`/api/employees/${plain.id}/account`).send({ role: 'EMPLOYEE' }).expect(201);
 
@@ -341,7 +414,7 @@ describe('Employees (e2e)', () => {
     });
 
     it('HR cannot create HR accounts for existing employees', async () => {
-      const plain = await prisma.employee.create({ data: employeeData() });
+      const plain = await prisma.employee.create({ data: employeeData(kt.id) });
       await asHr.post(`/api/employees/${plain.id}/account`).send({ role: 'HR' }).expect(403);
       expect(await prisma.user.count({ where: { employeeId: plain.id } })).toBe(0);
     });
@@ -358,7 +431,7 @@ describe('Employees (e2e)', () => {
     it('guards password resets', async () => {
       await asHr.post(`/api/employees/${admin.id}/account/reset-password`).expect(403);
       await asHr.post(`/api/employees/${hr.id}/account/reset-password`).expect(400);
-      const plain = await prisma.employee.create({ data: employeeData() });
+      const plain = await prisma.employee.create({ data: employeeData(kt.id) });
       await asHr.post(`/api/employees/${plain.id}/account/reset-password`).expect(404);
       await asAdmin.post(`/api/employees/${hr.id}/account/reset-password`).expect(200);
     });

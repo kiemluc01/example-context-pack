@@ -3,6 +3,8 @@ import { ClassConstructor, plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { CreateEmployeeDto, ListEmployeesQueryDto, UpdateEmployeeDto } from './employees.dto';
 
+const DEPARTMENT_ID = '6f1c2a4e-8b3d-4c5e-9f7a-1b2c3d4e5f60';
+
 async function check<T extends object>(cls: ClassConstructor<T>, plain: Record<string, unknown>) {
   const dto = plainToInstance(cls, plain);
   const errors = await validate(dto);
@@ -19,7 +21,7 @@ const validCreate = {
   phone: '0912.345 678',
   dateOfBirth: '',
   gender: 'MALE',
-  department: 'Kỹ thuật',
+  departmentId: DEPARTMENT_ID,
   position: 'Lập trình viên',
   hireDate: '2024-01-15',
   status: 'ACTIVE',
@@ -41,6 +43,7 @@ describe('CreateEmployeeDto', () => {
       phone: '0912345678',
       dateOfBirth: null,
       nationalId: null,
+      departmentId: DEPARTMENT_ID,
     });
   });
 
@@ -51,6 +54,7 @@ describe('CreateEmployeeDto', () => {
       email: 'x',
       phone: '12345',
       gender: 'X',
+      departmentId: 'ky-thuat',
       hireDate: '2024-02-30',
       status: 'RESIGNED',
       salary: 1_000_000_000_000,
@@ -59,9 +63,10 @@ describe('CreateEmployeeDto', () => {
     });
 
     expect(Object.keys(messages).sort()).toEqual(
-      ['accountRole', 'code', 'email', 'gender', 'hireDate', 'nationalId', 'phone', 'salary', 'status'].sort(),
+      ['accountRole', 'code', 'departmentId', 'email', 'gender', 'hireDate', 'nationalId', 'phone', 'salary', 'status'].sort(),
     );
     expect(messages.phone).toContain('Số điện thoại không hợp lệ (vd: 0912345678 hoặc +84912345678)');
+    expect(messages.departmentId).toContain('Vui lòng chọn phòng ban');
     expect(messages.hireDate).toContain('Ngày không hợp lệ (định dạng YYYY-MM-DD)');
     expect(messages.status).toContain('Trạng thái chỉ được là Thử việc, Đang làm việc hoặc Nghỉ phép dài hạn');
     expect(messages.nationalId).toContain('Số CCCD phải gồm đúng 12 chữ số');
@@ -69,7 +74,7 @@ describe('CreateEmployeeDto', () => {
 
   it('requires the mandatory fields', async () => {
     const { messages } = await check(CreateEmployeeDto, {});
-    expect(Object.keys(messages)).toEqual(expect.arrayContaining(['code', 'fullName', 'email', 'department', 'position', 'hireDate']));
+    expect(Object.keys(messages)).toEqual(expect.arrayContaining(['code', 'fullName', 'email', 'departmentId', 'position', 'hireDate']));
   });
 
   it('rejects a fractional salary', async () => {
@@ -85,8 +90,8 @@ describe('UpdateEmployeeDto', () => {
   });
 
   it('rejects null for required fields but clears optional ones', async () => {
-    const { dto, messages } = await check(UpdateEmployeeDto, { fullName: null, phone: '' });
-    expect(Object.keys(messages)).toEqual(['fullName']);
+    const { dto, messages } = await check(UpdateEmployeeDto, { fullName: null, departmentId: null, phone: '' });
+    expect(Object.keys(messages).sort()).toEqual(['departmentId', 'fullName']);
     expect(dto.phone).toBeNull();
   });
 });
@@ -101,18 +106,20 @@ describe('ListEmployeesQueryDto', () => {
   it('converts query strings and trims the keyword', async () => {
     const { dto, messages } = await check(ListEmployeesQueryDto, {
       q: '  An ',
+      departmentId: DEPARTMENT_ID,
       page: '3',
       pageSize: '50',
       sortBy: 'hireDate',
       sortOrder: 'asc',
     });
     expect(messages).toEqual({});
-    expect(dto).toMatchObject({ q: 'An', page: 3, pageSize: 50, sortBy: 'hireDate', sortOrder: 'asc' });
+    expect(dto).toMatchObject({ q: 'An', departmentId: DEPARTMENT_ID, page: 3, pageSize: 50, sortBy: 'hireDate', sortOrder: 'asc' });
   });
 
-  it('rejects out-of-range paging and unknown sort fields', async () => {
-    const { messages } = await check(ListEmployeesQueryDto, { page: '0', pageSize: '101', sortBy: 'salary' });
-    expect(Object.keys(messages).sort()).toEqual(['page', 'pageSize', 'sortBy']);
+  it('rejects out-of-range paging, unknown sort fields and a malformed department id', async () => {
+    const { messages } = await check(ListEmployeesQueryDto, { page: '0', pageSize: '101', sortBy: 'salary', departmentId: 'kt' });
+    expect(Object.keys(messages).sort()).toEqual(['departmentId', 'page', 'pageSize', 'sortBy']);
     expect(messages.sortBy).toContain('Trường sắp xếp không hợp lệ');
+    expect(messages.departmentId).toContain('Phòng ban không hợp lệ');
   });
 });

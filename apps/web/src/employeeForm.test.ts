@@ -7,7 +7,7 @@ const filled = (overrides: Partial<EmployeeFormValues> = {}): EmployeeFormValues
   code: 'NV01',
   fullName: 'Nguyễn Văn An',
   email: 'an@congty.vn',
-  department: 'Kỹ thuật',
+  departmentId: 'd1',
   position: 'Lập trình viên',
   hireDate: '2024-01-01',
   ...overrides,
@@ -20,7 +20,8 @@ describe('validateForm', () => {
 
   it('flags every missing required field', () => {
     const errors = validateForm({ ...emptyForm(), hireDate: '' });
-    expect(Object.keys(errors).sort()).toEqual(['code', 'department', 'email', 'fullName', 'hireDate', 'position']);
+    expect(Object.keys(errors).sort()).toEqual(['code', 'departmentId', 'email', 'fullName', 'hireDate', 'position']);
+    expect(errors.departmentId).toBe('Vui lòng chọn phòng ban');
   });
 
   it.each([
@@ -41,7 +42,7 @@ describe('validateForm', () => {
 });
 
 describe('toPayload', () => {
-  it('trims text, converts blanks to null and parses salary', () => {
+  it('trims text, converts blanks to null, parses salary and sends the department id', () => {
     expect(toPayload(filled({ fullName: '  An  ', phone: ' ', nationalId: '', salary: '15.000.000', gender: '' }))).toMatchObject({
       fullName: 'An',
       phone: null,
@@ -49,6 +50,7 @@ describe('toPayload', () => {
       dateOfBirth: null,
       gender: null,
       salary: 15000000,
+      departmentId: 'd1',
     });
   });
 
@@ -59,14 +61,14 @@ describe('toPayload', () => {
 });
 
 describe('fromDetail', () => {
-  it('maps nulls to empty inputs and round-trips through toPayload', () => {
+  it('maps nulls to empty inputs, picks the department id and round-trips through toPayload', () => {
     const detail = {
-      id: '1', code: 'NV01', fullName: 'An', email: 'an@x.vn', phone: null, department: 'KT', position: 'Dev',
-      status: 'ON_LEAVE', hireDate: '2024-01-01', hasAvatar: false, accountRole: null, deletedAt: null,
+      id: '1', code: 'NV01', fullName: 'An', email: 'an@x.vn', phone: null, department: { id: 'd1', code: 'KT', name: 'Kỹ thuật' },
+      position: 'Dev', status: 'ON_LEAVE', hireDate: '2024-01-01', hasAvatar: false, accountRole: null, deletedAt: null,
       dateOfBirth: null, gender: 'FEMALE', salary: 0, nationalId: null, createdAt: '', updatedAt: '', account: null,
     } satisfies EmployeeDetail;
     const values = fromDetail(detail);
-    expect(values).toMatchObject({ phone: '', dateOfBirth: '', gender: 'FEMALE', salary: '0', status: 'ON_LEAVE' });
-    expect(toPayload(values)).toMatchObject({ phone: null, gender: 'FEMALE', salary: 0, status: 'ON_LEAVE' });
+    expect(values).toMatchObject({ phone: '', dateOfBirth: '', gender: 'FEMALE', salary: '0', status: 'ON_LEAVE', departmentId: 'd1' });
+    expect(toPayload(values)).toMatchObject({ phone: null, gender: 'FEMALE', salary: 0, status: 'ON_LEAVE', departmentId: 'd1' });
   });
 });

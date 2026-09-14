@@ -27,28 +27,51 @@ enum EmployeeStatus {
   RESIGNED
 }
 
+/// Soft delete sets deleted_at; only allowed while no active employee or active sub-department remains.
+model Department {
+  id        String       @id @default(uuid()) @db.Uuid
+  code      String       @unique
+  /// Unique including soft-deleted departments.
+  name      String       @unique
+  parentId  String?      @map("parent_id") @db.Uuid
+  parent    Department?  @relation("DepartmentTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Department[] @relation("DepartmentTree")
+  /// An active employee of this department; cleared when that employee resigns or moves.
+  managerId String?      @unique @map("manager_id") @db.Uuid
+  manager   Employee?    @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+  employees Employee[]   @relation("EmployeeDepartment")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  deletedAt DateTime?    @map("deleted_at")
+
+  @@index([parentId])
+  @@map("departments")
+}
+
 model Employee {
-  id          String         @id @default(uuid()) @db.Uuid
-  code        String         @unique
-  fullName    String         @map("full_name")
-  email       String         @unique
-  phone       String?
-  dateOfBirth DateTime?      @map("date_of_birth") @db.Date
-  gender      Gender?
-  department  String
-  position    String
-  hireDate    DateTime       @map("hire_date") @db.Date
-  status      EmployeeStatus @default(ACTIVE)
-  salary      Decimal?       @db.Decimal(14, 0)
-  nationalId  String?        @unique @map("national_id")
-  avatarPath  String?        @map("avatar_path")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-  deletedAt   DateTime?      @map("deleted_at")
-  user        User?
+  id                String         @id @default(uuid()) @db.Uuid
+  code              String         @unique
+  fullName          String         @map("full_name")
+  email             String         @unique
+  phone             String?
+  dateOfBirth       DateTime?      @map("date_of_birth") @db.Date
+  gender            Gender?
+  departmentId      String         @map("department_id") @db.Uuid
+  department        Department     @relation("EmployeeDepartment", fields: [departmentId], references: [id], onDelete: Restrict)
+  position          String
+  hireDate          DateTime       @map("hire_date") @db.Date
+  status            EmployeeStatus @default(ACTIVE)
+  salary            Decimal?       @db.Decimal(14, 0)
+  nationalId        String?        @unique @map("national_id")
+  avatarPath        String?        @map("avatar_path")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  deletedAt         DateTime?      @map("deleted_at")
+  user              User?
+  managedDepartment Department?    @relation("DepartmentManager")
 
   @@index([deletedAt, createdAt])
-  @@index([department])
+  @@index([departmentId])
   @@index([position])
   @@map("employees")
 }

@@ -25,33 +25,43 @@ export async function resetDatabase(prisma: PrismaService): Promise<void> {
   if (!process.env.DATABASE_URL?.split('?')[0].endsWith('_test')) {
     throw new Error('Refusing to truncate a database whose name does not end with _test');
   }
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE users, employees CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE users, employees, departments CASCADE');
 }
 
 let seq = 0;
+const nextSeq = () => String(++seq).padStart(4, '0');
 
-export function employeeData(overrides: Partial<Prisma.EmployeeCreateInput> = {}): Prisma.EmployeeCreateInput {
-  seq += 1;
-  const n = String(seq).padStart(4, '0');
+export function createDepartment(prisma: PrismaService, overrides: Partial<Prisma.DepartmentUncheckedCreateInput> = {}) {
+  const n = nextSeq();
+  return prisma.department.create({ data: { code: `PB${n}`, name: `Phòng ban ${n}`, ...overrides } });
+}
+
+export function employeeData(
+  departmentId: string,
+  overrides: Partial<Prisma.EmployeeUncheckedCreateInput> = {},
+): Prisma.EmployeeUncheckedCreateInput {
+  const n = nextSeq();
   return {
     code: `T${n}`,
     fullName: `Nhân viên ${n}`,
     email: `nv${n}@test.vn`,
-    department: 'Kỹ thuật',
+    departmentId,
     position: 'Lập trình viên',
     hireDate: new Date('2024-01-15T00:00:00.000Z'),
     ...overrides,
   };
 }
 
+/** Without an explicit departmentId the employee gets a fresh department of their own. */
 export async function createEmployeeWithAccount(
   prisma: PrismaService,
   role: Role,
-  options: { mustChangePassword?: boolean; employee?: Partial<Prisma.EmployeeCreateInput> } = {},
+  options: { mustChangePassword?: boolean; employee?: Partial<Prisma.EmployeeUncheckedCreateInput> } = {},
 ) {
+  const departmentId = options.employee?.departmentId ?? (await createDepartment(prisma)).id;
   return prisma.employee.create({
     data: {
-      ...employeeData(options.employee),
+      ...employeeData(departmentId, options.employee),
       user: {
         create: { role, passwordHash: await hashPassword(PASSWORD), mustChangePassword: options.mustChangePassword ?? false },
       },

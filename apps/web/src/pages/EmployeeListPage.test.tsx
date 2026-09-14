@@ -27,7 +27,13 @@ function renderList(url = '/employees') {
 }
 
 beforeEach(() => {
-  vi.mocked(api.filterOptions).mockResolvedValue({ departments: ['Kỹ thuật', 'Nhân sự'], positions: ['Lập trình viên'] });
+  vi.mocked(api.filterOptions).mockResolvedValue({
+    departments: [
+      { id: 'd1', code: 'KT', name: 'Kỹ thuật' },
+      { id: 'd-ns', code: 'NS', name: 'Nhân sự' },
+    ],
+    positions: ['Lập trình viên'],
+  });
   vi.mocked(api.listEmployees).mockResolvedValue({
     items: [makeEmployee({ phone: null, accountRole: 'HR' })],
     total: 25,
@@ -48,7 +54,7 @@ describe('EmployeeListPage', () => {
     expect(await screen.findByText('Nguyễn Văn An')).toBeTruthy();
     expect(api.listEmployees).toHaveBeenCalledWith({
       q: undefined,
-      department: undefined,
+      departmentId: undefined,
       position: undefined,
       status: 'ACTIVE',
       sortBy: 'code',
@@ -68,6 +74,19 @@ describe('EmployeeListPage', () => {
 
     expect(urlParams().get('status')).toBe('RESIGNED');
     expect(urlParams().get('page')).toBeNull();
+  });
+
+  it('filters by department id and shows the department name', async () => {
+    renderList('/employees?page=2');
+    const row = (await screen.findByText('NV0001')).closest('tr')!;
+    expect(row.textContent).toContain('Kỹ thuật');
+    await screen.findByRole('option', { name: 'Nhân sự' });
+
+    fireEvent.change(screen.getByLabelText('Phòng ban'), { target: { value: 'd-ns' } });
+
+    expect(urlParams().get('departmentId')).toBe('d-ns');
+    expect(urlParams().get('page')).toBeNull();
+    await waitFor(() => expect(api.listEmployees).toHaveBeenLastCalledWith(expect.objectContaining({ departmentId: 'd-ns' })));
   });
 
   it('toggles sorting and keeps the page', async () => {

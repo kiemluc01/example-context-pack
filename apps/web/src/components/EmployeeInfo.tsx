@@ -24,7 +24,7 @@ export function EmployeeInfo({ employee }: { employee: EmployeeDetail }) {
     ['Số điện thoại', employee.phone ?? '—'],
     ['Ngày sinh', formatDate(employee.dateOfBirth)],
     ['Giới tính', employee.gender ? GENDER_LABEL[employee.gender] : '—'],
-    ['Phòng ban', employee.department],
+    ['Phòng ban', employee.department.name],
     ['Chức vụ', employee.position],
     ['Ngày vào làm', formatDate(employee.hireDate)],
     ['Lương', formatMoney(employee.salary)],

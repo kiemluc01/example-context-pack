@@ -8,10 +8,11 @@ import {
 import { EmployeeStatus, Prisma, Role } from '@prisma/client';
 import type { AuthUser } from '../auth/auth.types';
 import { generateTempPassword, hashPassword } from '../auth/password';
+import { departmentOptionsQuery } from '../departments/department.serializer';
 import { PrismaService } from '../prisma/prisma.service';
 import { canGrantRole, canManageTarget } from './access';
 import { AvatarStorage, detectImageType } from './avatar-storage';
-import { EmployeeDetail, EmployeeWithUser, parseDate, toDetail, toListItem } from './employee.serializer';
+import { EmployeeDetail, EmployeeWithRelations, employeeInclude, parseDate, toDetail, toListItem } from './employee.serializer';
 import type { CreateEmployeeDto, ListEmployeesQueryDto, UpdateEmployeeDto } from './employees.dto';
 import { buildListOrderBy, buildListWhere } from './list-query';
 
@@ -50,7 +51,7 @@ export class EmployeesService {
       this.prisma.employee.count({ where }),
       this.prisma.employee.findMany({
         where,
-        include: { user: true },
+        include: employeeInclude,
         orderBy: buildListOrderBy(query),
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
@@ -59,14 +60,9 @@ export class EmployeesService {
     return { items: rows.map(toListItem), total, page: query.page, pageSize: query.pageSize };
   }
 
-  async filterOptions(): Promise<{ departments: string[]; positions: string[] }> {
+  async filterOptions() {
     const [departments, positions] = await this.prisma.$transaction([
-      this.prisma.employee.findMany({
-        where: { deletedAt: null },
-        distinct: ['department'],
-        select: { department: true },
-        orderBy: { department: 'asc' },
-      }),
+      this.prisma.department.findMany(departmentOptionsQuery),
       this.prisma.employee.findMany({
         where: { deletedAt: null },
         distinct: ['position'],
@@ -74,7 +70,7 @@ export class EmployeesService {
         orderBy: { position: 'asc' },
       }),
     ]);
-    return { departments: departments.map((d) => d.department), positions: positions.map((p) => p.position) };
+    return { departments, positions: positions.map((p) => p.position) };
   }
 
   async findOne(id: string): Promise<EmployeeDetail> {
@@ -88,6 +84,7 @@ export class EmployeesService {
       throw new ForbiddenException('Chỉ Admin được cấp tài khoản HR hoặc Admin');
     }
     this.assertDateOfBirth(fields.dateOfBirth);
+    await this.assertActiveDepartment(fields.departmentId);
 
     const tempPassword = createAccount ? generateTempPassword() : null;
     const user = tempPassword
@@ -95,8 +92,8 @@ export class EmployeesService {
       : undefined;
     try {
       const employee = await this.prisma.employee.create({
-        data: { ...(toEmployeeData(fields) as Prisma.EmployeeCreateInput), user },
-        include: { user: true },
+        data: { ...(toEmployeeData(fields) as Prisma.EmployeeUncheckedCreateInput), user },
+        include: employeeInclude,
       });
       return { employee: toDetail(employee), tempPassword };
     } catch (err) {
@@ -108,11 +105,18 @@ export class EmployeesService {
     const current = await this.loadActive(id);
     this.assertCanManage(actor, current);
     this.assertDateOfBirth(dto.dateOfBirth);
+    const moved = dto.departmentId !== undefined && dto.departmentId !== current.departmentId;
+    if (moved) await this.assertActiveDepartment(dto.departmentId as string);
     try {
-      const employee = await this.prisma.employee.update({
-        where: { id },
-        data: toEmployeeData(dto) as Prisma.EmployeeUpdateInput,
-        include: { user: true },
+      const employee = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.employee.update({
+          where: { id },
+          data: toEmployeeData(dto) as Prisma.EmployeeUncheckedUpdateInput,
+          include: employeeInclude,
+        });
+        // A department head who moves to another department stops heading the old one.
+        if (moved) await tx.department.updateMany({ where: { managerId: id }, data: { managerId: null } });
+        return updated;
       });
       return toDetail(employee);
     } catch (err) {
@@ -126,20 +130,27 @@ export class EmployeesService {
     if (current.id === actor.employeeId) throw new BadRequestException('Bạn không thể tự xóa hồ sơ của mình');
     this.assertCanManage(actor, current);
     if (current.deletedAt) throw new ConflictException('Nhân viên đã ở trạng thái nghỉ việc');
-    await this.prisma.employee.update({
-      where: { id },
-      data: { status: EmployeeStatus.RESIGNED, deletedAt: new Date() },
-    });
+    await this.prisma.$transaction([
+      this.prisma.employee.update({
+        where: { id },
+        data: { status: EmployeeStatus.RESIGNED, deletedAt: new Date() },
+      }),
+      // A resigned employee can no longer head a department.
+      this.prisma.department.updateMany({ where: { managerId: id }, data: { managerId: null } }),
+    ]);
   }
 
   async restore(id: string, actor: AuthUser): Promise<EmployeeDetail> {
     const current = await this.load(id);
     this.assertCanManage(actor, current);
     if (!current.deletedAt) throw new ConflictException('Nhân viên chưa bị xóa');
+    if (current.department.deletedAt) {
+      throw new ConflictException(`Phòng ban "${current.department.name}" đã bị xóa, hãy khôi phục phòng ban trước`);
+    }
     const employee = await this.prisma.employee.update({
       where: { id },
       data: { status: EmployeeStatus.ACTIVE, deletedAt: null },
-      include: { user: true },
+      include: employeeInclude,
     });
     return toDetail(employee);
   }
@@ -191,7 +202,7 @@ export class EmployeesService {
     if (!ext) throw new BadRequestException('Ảnh phải là JPG, PNG hoặc WEBP');
 
     const name = await this.avatars.save(file.buffer, ext);
-    const employee = await this.prisma.employee.update({ where: { id }, data: { avatarPath: name }, include: { user: true } });
+    const employee = await this.prisma.employee.update({ where: { id }, data: { avatarPath: name }, include: employeeInclude });
     if (current.avatarPath) await this.avatars.remove(current.avatarPath);
     return toDetail(employee);
   }
@@ -205,19 +216,19 @@ export class EmployeesService {
     return { path: this.avatars.resolve(current.avatarPath), mime: this.avatars.mimeOf(current.avatarPath) };
   }
 
-  private async load(id: string): Promise<EmployeeWithUser> {
-    const employee = await this.prisma.employee.findUnique({ where: { id }, include: { user: true } });
+  private async load(id: string): Promise<EmployeeWithRelations> {
+    const employee = await this.prisma.employee.findUnique({ where: { id }, include: employeeInclude });
     if (!employee) throw new NotFoundException('Không tìm thấy nhân viên');
     return employee;
   }
 
-  private async loadActive(id: string): Promise<EmployeeWithUser> {
+  private async loadActive(id: string): Promise<EmployeeWithRelations> {
     const employee = await this.load(id);
     if (employee.deletedAt) throw new ConflictException('Nhân viên đã nghỉ việc, hãy khôi phục trước');
     return employee;
   }
 
-  private assertCanManage(actor: AuthUser, target: EmployeeWithUser): void {
+  private assertCanManage(actor: AuthUser, target: EmployeeWithRelations): void {
     if (!canManageTarget(actor.role, target.user?.role)) {
       throw new ForbiddenException('Chỉ Admin được thao tác trên hồ sơ có tài khoản HR hoặc Admin');
     }
@@ -227,5 +238,10 @@ export class EmployeesService {
     if (value && parseDate(value).getTime() >= Date.now()) {
       throw new BadRequestException('Ngày sinh phải trước ngày hôm nay');
     }
+  }
+
+  private async assertActiveDepartment(departmentId: string): Promise<void> {
+    const department = await this.prisma.department.findUnique({ where: { id: departmentId }, select: { deletedAt: true } });
+    if (!department || department.deletedAt) throw new BadRequestException('Phòng ban không tồn tại hoặc đã bị xóa');
   }
 }

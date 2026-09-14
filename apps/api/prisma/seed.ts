@@ -7,6 +7,11 @@ if (existsSync('.env')) process.loadEnvFile('.env');
 const prisma = new PrismaClient();
 const PASSWORD_RULE = /^(?=.*\p{L})(?=.*\d).{8,72}$/u;
 
+/** Reuses a department with the same name, e.g. one created by the departments migration backfill. */
+function ensureDepartment(code: string, name: string) {
+  return prisma.department.upsert({ where: { name }, update: {}, create: { code, name } });
+}
+
 async function seedAdmin(): Promise<void> {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD;
@@ -24,12 +29,13 @@ async function seedAdmin(): Promise<void> {
   if (existing) {
     await prisma.employee.update({ where: { id: existing.id }, data: { user } });
   } else {
+    const department = await ensureDepartment('BGD', 'Ban Giám đốc');
     await prisma.employee.create({
       data: {
         code: 'ADMIN001',
         fullName: 'Quản trị viên',
         email,
-        department: 'Ban Giám đốc',
+        departmentId: department.id,
         position: 'Quản trị hệ thống',
         hireDate: new Date(new Date().toISOString().slice(0, 10)),
         user,
@@ -47,17 +53,18 @@ async function seedDemo(): Promise<void> {
   const lastNames = ['Nguyễn', 'Trần', 'Lê', 'Phạm', 'Hoàng', 'Vũ', 'Đặng', 'Bùi'];
   const middleNames = ['Văn', 'Thị', 'Minh', 'Thu', 'Quốc', 'Ngọc'];
   const firstNames = ['An', 'Bình', 'Chi', 'Dũng', 'Hà', 'Hùng', 'Lan', 'Long', 'Mai', 'Nam', 'Phương', 'Tuấn'];
-  const departments: Array<[string, string[]]> = [
-    ['Kỹ thuật', ['Lập trình viên', 'Kiểm thử viên', 'Trưởng nhóm kỹ thuật']],
-    ['Kinh doanh', ['Nhân viên kinh doanh', 'Trưởng phòng kinh doanh']],
-    ['Nhân sự', ['Chuyên viên tuyển dụng', 'Chuyên viên C&B']],
-    ['Kế toán', ['Kế toán viên', 'Kế toán trưởng']],
+  const departments: Array<[string, string, string[]]> = [
+    ['KT', 'Kỹ thuật', ['Lập trình viên', 'Kiểm thử viên', 'Trưởng nhóm kỹ thuật']],
+    ['KD', 'Kinh doanh', ['Nhân viên kinh doanh', 'Trưởng phòng kinh doanh']],
+    ['NS', 'Nhân sự', ['Chuyên viên tuyển dụng', 'Chuyên viên C&B']],
+    ['KTOAN', 'Kế toán', ['Kế toán viên', 'Kế toán trưởng']],
   ];
+  const departmentIds = await Promise.all(departments.map(([code, name]) => ensureDepartment(code, name).then((d) => d.id)));
   const statuses = [EmployeeStatus.ACTIVE, EmployeeStatus.ACTIVE, EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION, EmployeeStatus.ON_LEAVE];
 
   const data = Array.from({ length: 30 }, (_, i) => {
     const n = i + 1;
-    const [department, positions] = departments[i % departments.length];
+    const [, , positions] = departments[i % departments.length];
     const middle = middleNames[i % middleNames.length];
     return {
       code: `NV${String(n).padStart(4, '0')}`,
@@ -66,7 +73,7 @@ async function seedDemo(): Promise<void> {
       phone: `09${String(10_000_000 + n * 7919).slice(0, 8)}`,
       dateOfBirth: new Date(Date.UTC(1985 + (i % 15), i % 12, 1 + (i % 27))),
       gender: middle === 'Thị' || middle === 'Thu' || middle === 'Ngọc' ? Gender.FEMALE : Gender.MALE,
-      department,
+      departmentId: departmentIds[i % departments.length],
       position: positions[i % positions.length],
       hireDate: new Date(Date.UTC(2018 + (i % 7), (i * 5) % 12, 1 + (i % 28))),
       status: statuses[i % statuses.length],

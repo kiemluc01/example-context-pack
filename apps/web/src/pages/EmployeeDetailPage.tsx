@@ -132,7 +132,7 @@ export function EmployeeDetailPage() {
           <div>
             <h1>{employee.fullName}</h1>
             <p className="muted">
-              {employee.position} · {employee.department}
+              {employee.position} · {employee.department.name}
             </p>
             <StatusBadge status={employee.status} />
           </div>

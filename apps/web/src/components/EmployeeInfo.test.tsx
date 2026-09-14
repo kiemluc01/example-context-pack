@@ -15,6 +15,7 @@ describe('EmployeeInfo', () => {
     expect(valueOf('Mã nhân viên')).toBe('NV0001');
     expect(valueOf('Ngày sinh')).toBe('20/05/1990');
     expect(valueOf('Giới tính')).toBe('Nam');
+    expect(valueOf('Phòng ban')).toBe('Kỹ thuật');
     expect(valueOf('Ngày vào làm')).toBe('15/01/2024');
     expect(valueOf('Lương')).toBe(formatMoney(15000000));
     expect(valueOf('Số CCCD')).toBe('012345678901');

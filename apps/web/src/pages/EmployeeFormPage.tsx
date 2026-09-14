@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { EmployeeFormValues, FormErrors, emptyForm, fromDetail, toPayload, validateForm } from '../employeeForm';
 import { EDITABLE_STATUSES, GENDER_LABEL, ROLE_LABEL, STATUS_LABEL, grantableRoles } from '../labels';
-import type { Gender, Role } from '../types';
+import type { DepartmentRef, Gender, Role } from '../types';
 
 export function EmployeeFormPage() {
   const { id } = useParams();
@@ -18,6 +18,14 @@ export function EmployeeFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [createAccount, setCreateAccount] = useState(true);
   const [accountRole, setAccountRole] = useState<Role>('EMPLOYEE');
+  const [departments, setDepartments] = useState<DepartmentRef[]>([]);
+
+  useEffect(() => {
+    api
+      .departmentOptions()
+      .then(setDepartments)
+      .catch((err: Error) => setServerError(err.message));
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -106,7 +114,19 @@ export function EmployeeFormPage() {
             ))}
           </select>,
         )}
-        {field('department', 'Phòng ban', text('department', { maxLength: 100 }), true)}
+        {field(
+          'departmentId',
+          'Phòng ban',
+          <select value={values.departmentId} onChange={(e) => set('departmentId', e.target.value)}>
+            <option value="">— Chọn phòng ban —</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>,
+          true,
+        )}
         {field('position', 'Chức vụ', text('position', { maxLength: 100 }), true)}
         {field('hireDate', 'Ngày vào làm', text('hireDate', { type: 'date' }), true)}
         {field(

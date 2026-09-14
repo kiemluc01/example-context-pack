@@ -19,13 +19,17 @@ apps/web   React 19, React Router 7, Vite
   | Sửa, xóa hồ sơ có tài khoản HR/Admin (kể cả hồ sơ của chính HR) | ✓ | – | – |
   | Cấp tài khoản vai trò Nhân viên, đặt lại mật khẩu cho nhân viên thường | ✓ | ✓ | – |
   | Cấp tài khoản HR/Admin, đổi vai trò | ✓ | – | – |
+  | Xem danh sách, chi tiết phòng ban | ✓ | ✓ | – |
+  | Thêm, sửa, xóa mềm, khôi phục phòng ban | ✓ | – | – |
   | Xem hồ sơ của mình (có lương và CCCD), đổi mật khẩu | ✓ | ✓ | ✓ |
 
   Không ai được tự xóa hồ sơ, tự đổi vai trò hoặc tự đặt lại mật khẩu của chính mình.
 - **Tài khoản:** tạo cùng lúc khi thêm nhân viên, hoặc tạo sau. Hệ thống sinh mật khẩu tạm và chỉ hiển thị một lần. Người dùng phải đổi mật khẩu tạm trước khi dùng các chức năng khác. Khi đổi hoặc đặt lại mật khẩu, mọi phiên đăng nhập khác bị đăng xuất.
 - **Xóa mềm:** nhân viên bị xóa chuyển sang trạng thái *Đã nghỉ việc*, có `deleted_at`, bị ẩn khỏi danh sách và tài khoản bị khóa ngay. Có thể khôi phục. Muốn xem nhân viên đã xóa thì lọc theo *Đã nghỉ việc*.
 - **Danh sách:** tìm kiếm phía server theo mã, họ tên, email và số điện thoại. Tìm kiếm không phân biệt hoa thường nhưng vẫn phân biệt dấu. Có lọc theo phòng ban, chức vụ và trạng thái; sắp xếp theo cột; phân trang 20 dòng.
-- **Hồ sơ:** mã NV (duy nhất), họ tên, email (duy nhất), SĐT, ngày sinh, giới tính, phòng ban, chức vụ, ngày vào làm, trạng thái, lương, CCCD (duy nhất, 12 số), ảnh đại diện (JPG/PNG/WEBP, tối đa 2 MB, kiểm tra theo magic bytes). Lương và CCCD không trả về trong API danh sách.
+- **Phòng ban:** danh mục gồm mã (duy nhất), tên (duy nhất, kể cả phòng ban đã xóa), phòng ban cha (phân cấp không giới hạn, không được chọn chính nó hoặc phòng ban con) và trưởng phòng (phải là nhân viên đang làm việc của chính phòng ban đó; tự bỏ trống khi người đó bị xóa hoặc chuyển phòng). Danh sách tìm theo mã/tên, lọc theo phòng ban cha và *Đã xóa*, sắp xếp, phân trang 20 dòng, kèm số nhân viên đang làm việc.
+- **Xóa phòng ban:** xóa mềm (`deleted_at`), chỉ được xóa khi không còn nhân viên đang làm việc và không còn phòng ban con chưa xóa. Phòng ban đã xóa không chọn được cho nhân viên. Muốn khôi phục phòng ban con thì phải khôi phục phòng ban cha trước; muốn khôi phục nhân viên thuộc phòng ban đã xóa thì phải khôi phục phòng ban trước.
+- **Hồ sơ:** mã NV (duy nhất), họ tên, email (duy nhất), SĐT, ngày sinh, giới tính, phòng ban (chọn từ danh mục), chức vụ, ngày vào làm, trạng thái, lương, CCCD (duy nhất, 12 số), ảnh đại diện (JPG/PNG/WEBP, tối đa 2 MB, kiểm tra theo magic bytes). Lương và CCCD không trả về trong API danh sách.
 
 ## Chạy local
 
@@ -55,6 +59,8 @@ Mở http://localhost:5173 và đăng nhập bằng `ADMIN_EMAIL` / `ADMIN_PASSW
 
 Khi dev, Vite proxy `/api` sang API để cookie luôn cùng origin.
 
+Database có sẵn dữ liệu: migration `20260914000000_departments` tạo phòng ban từ các giá trị phòng ban đang nhập tay (bỏ khoảng trắng thừa, mã PB001, PB002… theo thứ tự tên) rồi chuyển nhân viên sang khóa ngoại `department_id`. Lệnh rollback thủ công nằm trong phần chú thích đầu file migration.
+
 ## Test
 
 ```bash
@@ -73,7 +79,7 @@ Mọi route đều có tiền tố `/api`, và cần đăng nhập, trừ `POST 
 | POST | `/auth/login`, `/auth/logout` | công khai |
 | GET | `/auth/me` | đã đăng nhập |
 | POST | `/auth/change-password` | đã đăng nhập |
-| GET | `/employees?q&department&position&status&sortBy&sortOrder&page&pageSize` | Admin, HR |
+| GET | `/employees?q&departmentId&position&status&sortBy&sortOrder&page&pageSize` | Admin, HR |
 | GET | `/employees/filter-options` | Admin, HR |
 | GET | `/employees/me` | đã đăng nhập |
 | GET / PATCH / DELETE | `/employees/:id` | Admin, HR |
@@ -83,10 +89,15 @@ Mọi route đều có tiền tố `/api`, và cần đăng nhập, trừ `POST 
 | PATCH | `/employees/:id/account` (đổi vai trò) | Admin |
 | PUT | `/employees/:id/avatar` (multipart, field `file`) | Admin, HR |
 | GET | `/employees/:id/avatar` | Admin, HR, hoặc chính nhân viên đó |
+| GET | `/departments?q&parentId&status&sortBy&sortOrder&page&pageSize` · `/departments/options` · `/departments/:id` | Admin, HR |
+| POST / PATCH / DELETE | `/departments` · `/departments/:id` | Admin |
+| POST | `/departments/:id/restore` | Admin |
+
+Nhân viên trả về `department: { id, code, name }`; khi thêm/sửa nhân viên gửi `departmentId`.
 
 ## Giới hạn hiện tại
 
-- Chưa có: phòng ban/chức vụ dạng danh mục (đang là chữ nhập tay), chấm công, lương, hợp đồng, import/export, dashboard, Docker/deploy.
+- Chưa có: chức vụ dạng danh mục (đang là chữ nhập tay), sơ đồ tổ chức dạng cây, chấm công, lương, hợp đồng, import/export, dashboard, Docker/deploy.
 - Tìm kiếm vẫn phân biệt dấu ("tran" không tìm ra "Trần"). Muốn bỏ dấu cần extension `unaccent`.
 - Ảnh đại diện lưu trên đĩa tại `apps/api/uploads/`. Nếu deploy nhiều instance thì cần chuyển sang object storage.
 - Giới hạn số lần đăng nhập đang lưu trong bộ nhớ của từng process.

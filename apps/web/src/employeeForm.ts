@@ -7,7 +7,7 @@ export interface EmployeeFormValues {
   phone: string;
   dateOfBirth: string;
   gender: Gender | '';
-  department: string;
+  departmentId: string;
   position: string;
   hireDate: string;
   status: EditableStatus;
@@ -27,7 +27,7 @@ export function emptyForm(): EmployeeFormValues {
     phone: '',
     dateOfBirth: '',
     gender: '',
-    department: '',
+    departmentId: '',
     position: '',
     hireDate: todayIso(),
     status: 'ACTIVE',
@@ -44,7 +44,7 @@ export function fromDetail(e: EmployeeDetail): EmployeeFormValues {
     phone: e.phone ?? '',
     dateOfBirth: e.dateOfBirth ?? '',
     gender: e.gender ?? '',
-    department: e.department,
+    departmentId: e.department.id,
     position: e.position,
     hireDate: e.hireDate,
     status: e.status === 'RESIGNED' ? 'ACTIVE' : e.status,
@@ -63,7 +63,7 @@ export function validateForm(v: EmployeeFormValues): FormErrors {
   if (!v.fullName.trim()) errors.fullName = 'Vui lòng nhập họ tên';
   if (!/^\S+@\S+\.\S+$/.test(v.email.trim())) errors.email = 'Email không hợp lệ';
   if (v.phone.trim() && !/^(\+84|0)\d{9,10}$/.test(v.phone.replace(/[\s.]/g, ''))) errors.phone = 'Số điện thoại không hợp lệ';
-  if (!v.department.trim()) errors.department = 'Vui lòng nhập phòng ban';
+  if (!v.departmentId) errors.departmentId = 'Vui lòng chọn phòng ban';
   if (!v.position.trim()) errors.position = 'Vui lòng nhập chức vụ';
   if (!v.hireDate) errors.hireDate = 'Vui lòng chọn ngày vào làm';
   if (v.dateOfBirth && v.dateOfBirth >= todayIso()) errors.dateOfBirth = 'Ngày sinh phải trước hôm nay';
@@ -81,7 +81,7 @@ export function toPayload(v: EmployeeFormValues): EmployeePayload {
     phone: blankToNull(v.phone),
     dateOfBirth: blankToNull(v.dateOfBirth),
     gender: v.gender === '' ? null : v.gender,
-    department: v.department.trim(),
+    departmentId: v.departmentId,
     position: v.position.trim(),
     hireDate: v.hireDate,
     status: v.status,

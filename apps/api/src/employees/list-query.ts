@@ -1,7 +1,7 @@
 import { EmployeeStatus, Prisma } from '@prisma/client';
 import type { ListEmployeesQueryDto } from './employees.dto';
 
-type ListFilters = Pick<ListEmployeesQueryDto, 'q' | 'department' | 'position' | 'status'>;
+type ListFilters = Pick<ListEmployeesQueryDto, 'q' | 'departmentId' | 'position' | 'status'>;
 
 /** Soft-deleted employees are hidden unless the RESIGNED status is requested explicitly. */
 export function buildListWhere(query: ListFilters): Prisma.EmployeeWhereInput {
@@ -10,7 +10,7 @@ export function buildListWhere(query: ListFilters): Prisma.EmployeeWhereInput {
       ? { deletedAt: { not: null } }
       : { deletedAt: null, ...(query.status ? { status: query.status } : {}) };
 
-  if (query.department) where.department = query.department;
+  if (query.departmentId) where.departmentId = query.departmentId;
   if (query.position) where.position = query.position;
 
   const keyword = query.q?.trim();
@@ -22,6 +22,8 @@ export function buildListWhere(query: ListFilters): Prisma.EmployeeWhereInput {
 }
 
 export function buildListOrderBy(query: Pick<ListEmployeesQueryDto, 'sortBy' | 'sortOrder'>) {
+  // The department column sorts by the department name.
+  const primary = query.sortBy === 'department' ? { department: { name: query.sortOrder } } : { [query.sortBy]: query.sortOrder };
   // Secondary key keeps pagination stable when the sort column has duplicates.
-  return [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }] as Prisma.EmployeeOrderByWithRelationInput[];
+  return [primary, { id: 'asc' }] as Prisma.EmployeeOrderByWithRelationInput[];
 }

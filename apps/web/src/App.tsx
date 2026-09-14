@@ -3,6 +3,9 @@ import { useAuth } from './auth';
 import { Layout } from './components/Layout';
 import { homePath } from './labels';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { DepartmentDetailPage } from './pages/DepartmentDetailPage';
+import { DepartmentFormPage } from './pages/DepartmentFormPage';
+import { DepartmentListPage } from './pages/DepartmentListPage';
 import { EmployeeDetailPage } from './pages/EmployeeDetailPage';
 import { EmployeeFormPage } from './pages/EmployeeFormPage';
 import { EmployeeListPage } from './pages/EmployeeListPage';
@@ -40,6 +43,12 @@ export function App() {
             <Route path="/employees/new" element={<EmployeeFormPage />} />
             <Route path="/employees/:id" element={<EmployeeDetailPage />} />
             <Route path="/employees/:id/edit" element={<EmployeeFormPage />} />
+            <Route path="/departments" element={<DepartmentListPage />} />
+            <Route path="/departments/:id" element={<DepartmentDetailPage />} />
+          </Route>
+          <Route element={<RequireAuth roles={['ADMIN']} />}>
+            <Route path="/departments/new" element={<DepartmentFormPage />} />
+            <Route path="/departments/:id/edit" element={<DepartmentFormPage />} />
           </Route>
           <Route path="*" element={<div className="card">Không tìm thấy trang.</div>} />
         </Route>

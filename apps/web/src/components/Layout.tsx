@@ -18,7 +18,12 @@ export function Layout() {
         <div className="brand">Quản lý nhân viên</div>
         {!user.mustChangePassword && (
           <nav className="nav">
-            {user.role !== 'EMPLOYEE' && <NavLink to="/employees">Nhân viên</NavLink>}
+            {user.role !== 'EMPLOYEE' && (
+              <>
+                <NavLink to="/employees">Nhân viên</NavLink>
+                <NavLink to="/departments">Phòng ban</NavLink>
+              </>
+            )}
             <NavLink to="/me">Hồ sơ của tôi</NavLink>
             <NavLink to="/change-password">Đổi mật khẩu</NavLink>
           </nav>
