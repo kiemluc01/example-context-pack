@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  HR
+  EMPLOYEE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+/// RESIGNED is only set by soft delete (together with deleted_at).
+enum EmployeeStatus {
+  PROBATION
+  ACTIVE
+  ON_LEAVE
+  RESIGNED
+}
+
+model Employee {
+  id          String         @id @default(uuid()) @db.Uuid
+  code        String         @unique
+  fullName    String         @map("full_name")
+  email       String         @unique
+  phone       String?
+  dateOfBirth DateTime?      @map("date_of_birth") @db.Date
+  gender      Gender?
+  department  String
+  position    String
+  hireDate    DateTime       @map("hire_date") @db.Date
+  status      EmployeeStatus @default(ACTIVE)
+  salary      Decimal?       @db.Decimal(14, 0)
+  nationalId  String?        @unique @map("national_id")
+  avatarPath  String?        @map("avatar_path")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
+  user        User?
+
+  @@index([deletedAt, createdAt])
+  @@index([department])
+  @@index([position])
+  @@map("employees")
+}
+
+/// Login account. Identified by the linked employee's email; locked while the employee is soft-deleted.
+model User {
+  id                 String   @id @default(uuid()) @db.Uuid
+  employeeId         String   @unique @map("employee_id") @db.Uuid
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  passwordHash       String   @map("password_hash")
+  role               Role     @default(EMPLOYEE)
+  mustChangePassword Boolean  @default(true) @map("must_change_password")
+  /// Embedded in the JWT; incremented on password change/reset to revoke existing sessions.
+  sessionVersion     Int      @default(0) @map("session_version")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
